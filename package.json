@@ -1,0 +1,19 @@
+{
+  "name": "fit-n-fatal",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/create-mobile-assets.js",
+    "setup": "node scripts/create-mobile-assets.js",
+    "mobile": "npm run start --workspace=@fit-n-fatal/mobile",
+    "web": "npm run dev --workspace=@fit-n-fatal/web",
+    "build:web": "npm run build --workspace=@fit-n-fatal/web",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
