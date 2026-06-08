@@ -24,6 +24,10 @@ export function createSupabaseClient(
   return client;
 }
 
+export function setSupabaseClient(supabaseClient: SupabaseClient) {
+  client = supabaseClient;
+}
+
 export function getSupabaseClient(): SupabaseClient {
   if (!client) {
     throw new Error('Supabase client not initialized. Call createSupabaseClient first.');

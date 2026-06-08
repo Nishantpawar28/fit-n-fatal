@@ -13,6 +13,7 @@ import {
 } from '@fit-n-fatal/db';
 import { Card, Button, Input, Badge } from '@/components/ui';
 import { useCurrentUserId } from '@/lib/use-current-user';
+import { createClient } from '@/lib/supabase/client';
 
 export default function WorkoutPage() {
   const queryClient = useQueryClient();
@@ -34,7 +35,10 @@ export default function WorkoutPage() {
   });
 
   const startMutation = useMutation({
-    mutationFn: () => startWorkoutSession(userId!),
+    mutationFn: () => {
+      createClient();
+      return startWorkoutSession(userId!);
+    },
     onSuccess: () => {
       setError(null);
       queryClient.invalidateQueries({ queryKey: ['activeSession'] });
