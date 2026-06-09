@@ -8,23 +8,6 @@ Your project is at: `C:\Users\Nishant\Desktop\fit-n-fatal`
 - [x] Database schema migrated (`001_initial_schema.sql`)
 - [x] Exercises seeded (57 rows)
 
-## 🔧 Step 1b: Fix signup (required — run once)
-
-If signup shows **"Database error saving new user"**, run this in Supabase **SQL Editor**:
-
-Open `supabase/fix-auth.sql`, copy all contents, paste into SQL Editor, click **Run**.
-
-Then verify from terminal:
-
-```powershell
-.\scripts\test-auth.ps1
-```
-
-You should see `SUCCESS: Signup works`.
-
-Also disable email confirmation for easy testing:
-**Authentication** → **Sign In / Providers** → **Email** → turn **OFF** "Confirm email".
-
 ## 🔑 Step 1: Add Supabase keys (you chose to do this)
 
 1. Open [Supabase Dashboard](https://supabase.com/dashboard) → your project
@@ -71,12 +54,6 @@ npm run mobile
 ```
 
 Scan the QR code with **Expo Go** on your phone.
-
-## ⚙️ Recommended Supabase setting (for easy testing)
-
-**Authentication** → **Providers** → **Email** → turn **OFF** "Confirm email" → Save.
-
-This lets you sign up and log in immediately without email confirmation.
 
 ## Troubleshooting
 

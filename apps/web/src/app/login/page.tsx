@@ -11,21 +11,54 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setInfo('');
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const normalizedEmail = email.trim().toLowerCase();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
+    if (!data.session) {
+      setError('Could not create a session. Please try again.');
+      setLoading(false);
+      return;
+    }
     router.push('/dashboard');
     router.refresh();
+  };
+
+  const handleForgotPassword = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError('Enter your email above, then click Forgot password.');
+      return;
+    }
+    setResetting(true);
+    setError('');
+    setInfo('');
+    const supabase = createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: `${window.location.origin}/login`,
+    });
+    setResetting(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setInfo('If this email exists, a password reset link was sent.');
   };
 
   const handleGoogle = async () => {
@@ -60,9 +93,18 @@ export default function LoginPage() {
               <Input value={password} onChange={setPassword} placeholder="••••••••" type="password" />
             </div>
             {error && <p className="text-red-400 text-sm">{error}</p>}
+            {info && <p className="text-fnf-violet text-sm">{info}</p>}
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={resetting}
+              className="w-full text-center text-fnf-muted text-sm hover:text-fnf-violet"
+            >
+              {resetting ? 'Sending reset link...' : 'Forgot password?'}
+            </button>
           </form>
           <Button onClick={handleGoogle} variant="secondary" className="w-full mt-3">
             Continue with Google

@@ -21,18 +21,15 @@ export default function SignupPage() {
     setIsError(false);
 
     const supabase = createClient();
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+    });
     setLoading(false);
 
     if (error) {
       setIsError(true);
-      if (error.message.includes('Database error saving new user')) {
-        setMessage(
-          'Signup failed in Supabase. Run supabase/fix-auth.sql in your Supabase SQL Editor, then try again.'
-        );
-      } else {
-        setMessage(error.message);
-      }
+      setMessage(error.message);
       return;
     }
 
