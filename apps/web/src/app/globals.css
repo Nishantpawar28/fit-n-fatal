@@ -2,7 +2,93 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --fnf-bg: 13 13 20;
+  --fnf-surface: 19 18 31;
+  --fnf-purple: 139 43 255;
+  --fnf-violet: 200 75 255;
+  --fnf-pink: 255 107 170;
+  --fnf-green: 0 255 160;
+  --fnf-text: 240 238 255;
+  --fnf-muted: 128 116 156;
+  --fnf-secondary: 208 200 232;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --fnf-bg: 248 247 252;
+    --fnf-surface: 255 255 255;
+    --fnf-purple: 124 42 217;
+    --fnf-violet: 150 42 217;
+    --fnf-pink: 219 59 130;
+    --fnf-green: 0 150 102;
+    --fnf-text: 24 20 34;
+    --fnf-muted: 110 100 130;
+    --fnf-secondary: 55 48 74;
+  }
+}
+
+:root[data-theme='light'] {
+  --fnf-bg: 248 247 252;
+  --fnf-surface: 255 255 255;
+  --fnf-purple: 124 42 217;
+  --fnf-violet: 150 42 217;
+  --fnf-pink: 219 59 130;
+  --fnf-green: 0 150 102;
+  --fnf-text: 24 20 34;
+  --fnf-muted: 110 100 130;
+  --fnf-secondary: 55 48 74;
+}
+
 body {
-  background-color: #0D0D14;
-  color: #F0EEFF;
+  background-color: rgb(var(--fnf-bg));
+  color: rgb(var(--fnf-text));
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--fnf-purple) / 0.35);
+  border-radius: 8px;
+}
+
+@keyframes fnf-pop-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.fnf-animate-in {
+  animation: fnf-pop-in 0.18s ease-out;
+}
+
+@keyframes fnf-celebrate {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.9);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+.fnf-celebrate {
+  animation: fnf-celebrate 4s ease-in-out forwards;
 }

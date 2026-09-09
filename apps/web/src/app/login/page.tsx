@@ -77,11 +77,6 @@ export default function LoginPage() {
         </h1>
         <p className="text-fnf-muted text-sm mb-8">Train hard. Track harder.</p>
 
-        <div className="bg-gradient-to-r from-[#6B1FCC] to-[#A83BEE] rounded-xl p-5 mb-6">
-          <p className="font-heading font-semibold text-white">Dark · Purple · Deadly</p>
-          <p className="text-white/65 text-xs mt-1">Your strength journey starts here</p>
-        </div>
-
         <Card>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>

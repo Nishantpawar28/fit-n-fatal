@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Link, router } from 'expo-router';
 import { useAuth } from '@/lib/auth';
-import { Screen, Heading, Subtext, Label, Input, Button, HeroCard } from '@/components/ui';
+import { Screen, Subtext, Label, Input, Button } from '@/components/ui';
 import { colors } from '@fit-n-fatal/utils';
 
 export default function LoginScreen() {
@@ -49,8 +49,6 @@ export default function LoginScreen() {
             </Text>
             <Subtext>Train hard. Track harder.</Subtext>
           </View>
-
-          <HeroCard title="Dark · Purple · Deadly" subtitle="Your strength journey starts here" />
 
           <Label>Email</Label>
           <Input value={email} onChangeText={setEmail} placeholder="you@email.com" keyboardType="email-address" />
