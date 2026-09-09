@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getWorkoutStats, getPersonalRecords, getGoals, getWaterTrend } from '@fit-n-fatal/db';
 import { Card } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
-import { computeAchievements } from '@fit-n-fatal/utils';
+import { computeAchievements, toLocalDateStr, addDaysLocal } from '@fit-n-fatal/utils';
 import { cn } from '@/lib/utils';
 
 export default function AchievementsPage() {
@@ -18,9 +18,9 @@ export default function AchievementsPage() {
   const fromDate = useMemo(() => {
     const d = new Date();
     d.setFullYear(d.getFullYear() - 1);
-    return d.toISOString().split('T')[0];
+    return toLocalDateStr(d);
   }, []);
-  const toDate = new Date().toISOString().split('T')[0];
+  const toDate = toLocalDateStr();
 
   const { data: waterTrend } = useQuery({
     queryKey: ['waterTrend', userId, 'year'],
@@ -33,16 +33,13 @@ export default function AchievementsPage() {
     const goal = profile?.daily_water_goal_ml ?? 3000;
     const byDate = new Map(waterTrend.map((d) => [d.date, d.amount_ml]));
     let streak = 0;
-    const cursor = new Date();
-    let key = cursor.toISOString().split('T')[0];
+    let key = toLocalDateStr();
     if ((byDate.get(key) ?? 0) < goal) {
-      cursor.setDate(cursor.getDate() - 1);
-      key = cursor.toISOString().split('T')[0];
+      key = addDaysLocal(key, -1);
     }
     while ((byDate.get(key) ?? 0) >= goal) {
       streak++;
-      cursor.setDate(cursor.getDate() - 1);
-      key = cursor.toISOString().split('T')[0];
+      key = addDaysLocal(key, -1);
     }
     return streak;
   }, [waterTrend, profile]);

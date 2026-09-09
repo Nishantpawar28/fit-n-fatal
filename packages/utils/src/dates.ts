@@ -1,5 +1,25 @@
 export type DateRange = 'week' | 'month' | 'quarter' | 'year' | 'all';
 
+/**
+ * Local calendar date as YYYY-MM-DD. Deliberately NOT `.toISOString()` — that
+ * converts to UTC and silently shifts the date near midnight for any user
+ * not in UTC, which breaks "today" comparisons against DATE columns
+ * (workout_date, entry_date, measured_date) that are meant to represent the
+ * user's local calendar day.
+ */
+export function toLocalDateStr(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function addDaysLocal(dateStr: string, delta: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + delta);
+  return toLocalDateStr(d);
+}
+
 export function startOfDay(date: Date): Date {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -77,7 +97,7 @@ export function groupByDate<T extends { started_at?: string; created_at?: string
     (acc, item) => {
       const raw = item[dateKey];
       if (!raw) return acc;
-      const key = startOfDay(new Date(raw)).toISOString().split('T')[0];
+      const key = toLocalDateStr(new Date(raw));
       if (!acc[key]) acc[key] = [];
       acc[key].push(item);
       return acc;

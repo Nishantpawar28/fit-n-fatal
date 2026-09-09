@@ -15,10 +15,10 @@ import {
   sumNutrition,
 } from '@fit-n-fatal/db';
 import { Card, Button, Badge, ProgressRing, ProgressBar } from '@/components/ui';
-import { formatDate, formatWater } from '@fit-n-fatal/utils';
+import { formatDate, formatWater, toLocalDateStr } from '@fit-n-fatal/utils';
 import { useProfile } from '@/lib/use-profile';
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => toLocalDateStr();
 
 export default function DashboardPage() {
   const { userId, profile } = useProfile();
@@ -87,7 +87,7 @@ export default function DashboardPage() {
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().split('T')[0];
+      const key = toLocalDateStr(d);
       const session = history?.find((h) => h.workout_date === key);
       const sets = session ? session.workout_exercises.reduce((s, we) => s + we.sets.length, 0) : 0;
       days.push({ day: d.toLocaleDateString('en-US', { weekday: 'short' })[0], sets });

@@ -7,10 +7,9 @@ import { getMonthActivity, getWorkoutHistory, getFoodEntriesForDate, getWaterEnt
 import { Card, Badge } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
 import { cn } from '@/lib/utils';
+import { toLocalDateStr } from '@fit-n-fatal/utils';
 
-function toKey(d: Date) {
-  return d.toISOString().split('T')[0];
-}
+const toKey = toLocalDateStr;
 
 export default function CalendarPage() {
   const { userId, profile } = useProfile();

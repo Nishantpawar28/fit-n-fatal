@@ -6,20 +6,14 @@ import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { getWaterEntriesForDate, addWaterEntry, deleteWaterEntry } from '@fit-n-fatal/db';
 import { Card, Button, Input, ProgressRing } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
-import { formatWater } from '@fit-n-fatal/utils';
+import { formatWater, toLocalDateStr, addDaysLocal } from '@fit-n-fatal/utils';
 
 const QUICK_AMOUNTS = [250, 500, 750, 1000];
-
-function addDays(date: string, delta: number) {
-  const d = new Date(date + 'T00:00:00');
-  d.setDate(d.getDate() + delta);
-  return d.toISOString().split('T')[0];
-}
 
 export default function WaterPage() {
   const { userId, profile } = useProfile();
   const queryClient = useQueryClient();
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(toLocalDateStr());
   const [custom, setCustom] = useState('');
 
   const { data: entries } = useQuery({
@@ -47,9 +41,9 @@ export default function WaterPage() {
       <div className="flex justify-between items-center mb-6">
         <h2 className="font-heading text-2xl font-bold text-fnf-text">Hydration</h2>
         <div className="flex items-center gap-2">
-          <button onClick={() => setDate((d) => addDays(d, -1))} className="text-fnf-muted hover:text-fnf-text p-1"><ChevronLeft size={18} /></button>
+          <button onClick={() => setDate((d) => addDaysLocal(d, -1))} className="text-fnf-muted hover:text-fnf-text p-1"><ChevronLeft size={18} /></button>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-fnf-surface border border-purple-500/15 rounded-lg px-3 py-1.5 text-sm text-fnf-text" />
-          <button onClick={() => setDate((d) => addDays(d, 1))} className="text-fnf-muted hover:text-fnf-text p-1"><ChevronRight size={18} /></button>
+          <button onClick={() => setDate((d) => addDaysLocal(d, 1))} className="text-fnf-muted hover:text-fnf-text p-1"><ChevronRight size={18} /></button>
         </div>
       </div>
 

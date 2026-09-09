@@ -6,7 +6,7 @@ import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { getWorkoutHistory, getWorkoutStats, getNutritionTrend, getWaterTrend } from '@fit-n-fatal/db';
 import { Card } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
-import { getDateRangeStart, type DateRange } from '@fit-n-fatal/utils';
+import { getDateRangeStart, toLocalDateStr, type DateRange } from '@fit-n-fatal/utils';
 
 const RANGES: DateRange[] = ['week', 'month', 'quarter', 'year'];
 const PIE_COLORS = ['#8B2BFF', '#C84BFF', '#FF6BAA', '#00FFA0', '#3FC5FF', '#F5A623', '#F0EEFF'];
@@ -16,8 +16,8 @@ export default function AnalyticsPage() {
   const [range, setRange] = useState<DateRange>('month');
 
   const fromDate = getDateRangeStart(range) ?? new Date(0);
-  const fromDateStr = fromDate.toISOString().split('T')[0];
-  const toDateStr = new Date().toISOString().split('T')[0];
+  const fromDateStr = toLocalDateStr(fromDate);
+  const toDateStr = toLocalDateStr();
 
   const { data: history } = useQuery({ queryKey: ['history', userId], queryFn: () => getWorkoutHistory(userId!), enabled: !!userId });
   const { data: stats } = useQuery({ queryKey: ['workoutStats', userId], queryFn: () => getWorkoutStats(userId!), enabled: !!userId });
@@ -32,7 +32,7 @@ export default function AnalyticsPage() {
     enabled: !!userId,
   });
 
-  const inRange = (history ?? []).filter((h) => new Date(h.workout_date) >= fromDate);
+  const inRange = (history ?? []).filter((h) => h.workout_date >= fromDateStr);
 
   const totalSets = inRange.reduce((s, h) => s + h.workout_exercises.reduce((x, we) => x + we.sets.length, 0), 0);
   const totalReps = inRange.reduce((s, h) => s + h.workout_exercises.reduce((x, we) => x + we.sets.reduce((r, set) => r + set.reps, 0), 0), 0);

@@ -19,7 +19,7 @@ import {
 import type { Goal, GoalType } from '@fit-n-fatal/db';
 import { Card, Button, Input, Select, ProgressBar, ConfirmDialog, EmptyState, Modal } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
-import { GOAL_TYPE_LABELS } from '@fit-n-fatal/utils';
+import { GOAL_TYPE_LABELS, toLocalDateStr } from '@fit-n-fatal/utils';
 import { useToast } from '@/components/toast-provider';
 
 const GOAL_TYPES = Object.keys(GOAL_TYPE_LABELS) as GoalType[];
@@ -37,7 +37,7 @@ export default function GoalsPage() {
   const [deadline, setDeadline] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Goal | null>(null);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDateStr();
 
   const { data: goals } = useQuery({ queryKey: ['goals', userId], queryFn: () => getGoals(userId!), enabled: !!userId });
   const { data: prs } = useQuery({ queryKey: ['prs', userId], queryFn: () => getPersonalRecords(userId!), enabled: !!userId });

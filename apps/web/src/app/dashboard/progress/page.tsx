@@ -15,7 +15,7 @@ import {
 } from '@fit-n-fatal/db';
 import type { ProgressPhoto } from '@fit-n-fatal/db';
 import { Card, Button, Input, ConfirmDialog } from '@/components/ui';
-import { getDateRangeStart, type DateRange, formatDate } from '@fit-n-fatal/utils';
+import { getDateRangeStart, type DateRange, formatDate, toLocalDateStr } from '@fit-n-fatal/utils';
 import { useProfile } from '@/lib/use-profile';
 
 const RANGES: DateRange[] = ['week', 'month', 'quarter', 'year'];
@@ -34,7 +34,7 @@ export default function ProgressPage() {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [metric, setMetric] = useState<(typeof METRICS)[number]['key']>('max_weight');
 
-  const [measureDate, setMeasureDate] = useState(new Date().toISOString().split('T')[0]);
+  const [measureDate, setMeasureDate] = useState(toLocalDateStr());
   const [weightKg, setWeightKg] = useState('');
   const [bodyFat, setBodyFat] = useState('');
   const [waist, setWaist] = useState('');

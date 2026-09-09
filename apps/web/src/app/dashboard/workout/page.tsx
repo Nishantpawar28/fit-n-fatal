@@ -21,7 +21,7 @@ import {
 } from '@fit-n-fatal/db';
 import { Card, Button, Input, Badge, Select, Modal } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
-import { WORKOUT_TYPE_LABELS, WORKOUT_TYPES, detectNewPR } from '@fit-n-fatal/utils';
+import { WORKOUT_TYPE_LABELS, WORKOUT_TYPES, detectNewPR, toLocalDateStr } from '@fit-n-fatal/utils';
 import { ExerciseCard } from '@/components/workout/exercise-card';
 import { RestTimer } from '@/components/rest-timer';
 import { useToast } from '@/components/toast-provider';
@@ -36,7 +36,7 @@ export default function WorkoutPage() {
 
   const [workoutType, setWorkoutType] = useState('gym');
   const [workoutName, setWorkoutName] = useState('');
-  const [workoutDate, setWorkoutDate] = useState(new Date().toISOString().split('T')[0]);
+  const [workoutDate, setWorkoutDate] = useState(toLocalDateStr());
 
   const [prBaselines, setPrBaselines] = useState<Record<string, { max_weight: number; estimated_1rm: number; best_reps_at_weight: { weight: number; reps: number } }>>({});
 

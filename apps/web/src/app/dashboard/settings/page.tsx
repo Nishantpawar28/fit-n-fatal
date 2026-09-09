@@ -6,7 +6,7 @@ import { updateProfile, uploadAvatar, exportUserData } from '@fit-n-fatal/db';
 import type { ActivityLevel, FitnessGoal, Gender, ThemePreference as DbThemePreference } from '@fit-n-fatal/db';
 import { Card, Button, Input, Select, Toggle, ConfirmDialog } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
-import { ACTIVITY_LEVEL_LABELS, FITNESS_GOAL_LABELS, GENDER_LABELS } from '@fit-n-fatal/utils';
+import { ACTIVITY_LEVEL_LABELS, FITNESS_GOAL_LABELS, GENDER_LABELS, toLocalDateStr } from '@fit-n-fatal/utils';
 import { applyTheme, type ThemePreference } from '@/lib/theme';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/toast-provider';
@@ -114,7 +114,7 @@ export default function SettingsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `fitnfatal-export-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `fitnfatal-export-${toLocalDateStr()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };

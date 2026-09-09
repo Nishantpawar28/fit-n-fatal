@@ -21,7 +21,7 @@ import type {
   WorkoutTemplate,
   WorkoutType,
 } from './types';
-import { calculateOneRepMax, calculateVolume, startOfDay } from '@fit-n-fatal/utils';
+import { calculateOneRepMax, calculateVolume, startOfDay, toLocalDateStr, addDaysLocal } from '@fit-n-fatal/utils';
 
 // =========================================================================
 // PROFILE
@@ -180,7 +180,7 @@ export async function startWorkoutSession(userId: string, input?: StartWorkoutIn
     .from('workout_sessions')
     .insert({
       user_id: userId,
-      workout_date: input?.workoutDate ?? new Date().toISOString().split('T')[0],
+      workout_date: input?.workoutDate ?? toLocalDateStr(),
       workout_type: input?.workoutType ?? 'gym',
       name: input?.name ?? null,
       template_id: input?.templateId ?? null,
@@ -429,9 +429,15 @@ export async function getWorkoutHistory(
 export async function getWorkoutStats(userId: string): Promise<WorkoutStats> {
   const sessions = await getWorkoutHistory(userId);
   const now = new Date();
-  const weekStart = startOfDay(new Date(now));
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Compare local-calendar-date strings throughout (not Date objects) —
+  // workout_date is a plain DATE column representing the user's local day,
+  // and parsing it back into a Date would reinterpret it as UTC midnight,
+  // which drifts against local "today"/"this week" boundaries by timezone.
+  const todayStr = toLocalDateStr(now);
+  const weekStartDate = startOfDay(new Date(now));
+  weekStartDate.setDate(weekStartDate.getDate() - weekStartDate.getDay());
+  const weekStartStr = toLocalDateStr(weekStartDate);
+  const monthStartStr = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
 
   let workoutsThisWeek = 0;
   let workoutsThisMonth = 0;
@@ -440,9 +446,8 @@ export async function getWorkoutStats(userId: string): Promise<WorkoutStats> {
   const daysWithWorkouts = new Set<string>();
 
   for (const s of sessions) {
-    const d = new Date(s.workout_date);
-    if (d >= weekStart) workoutsThisWeek++;
-    if (d >= monthStart) workoutsThisMonth++;
+    if (s.workout_date >= weekStartStr) workoutsThisWeek++;
+    if (s.workout_date >= monthStartStr) workoutsThisMonth++;
     daysWithWorkouts.add(s.workout_date);
     totalSets += s.workout_exercises.reduce((sum, we) => sum + we.sets.length, 0);
     if (s.duration_minutes) {
@@ -454,12 +459,11 @@ export async function getWorkoutStats(userId: string): Promise<WorkoutStats> {
 
   // Streak: consecutive days (from today or yesterday) with a workout
   let streak = 0;
-  const cursor = startOfDay(new Date());
-  const todayKey = cursor.toISOString().split('T')[0];
-  if (!daysWithWorkouts.has(todayKey)) cursor.setDate(cursor.getDate() - 1);
-  while (daysWithWorkouts.has(cursor.toISOString().split('T')[0])) {
+  let cursorStr = todayStr;
+  if (!daysWithWorkouts.has(cursorStr)) cursorStr = addDaysLocal(cursorStr, -1);
+  while (daysWithWorkouts.has(cursorStr)) {
     streak++;
-    cursor.setDate(cursor.getDate() - 1);
+    cursorStr = addDaysLocal(cursorStr, -1);
   }
 
   return {
@@ -793,8 +797,10 @@ export async function getNutritionTrend(
 // HYDRATION
 // =========================================================================
 export async function getWaterEntriesForDate(userId: string, date: string): Promise<WaterEntry[]> {
-  const startIso = `${date}T00:00:00.000Z`;
-  const endIso = `${date}T23:59:59.999Z`;
+  // logged_at is a UTC timestamp; convert the caller's local calendar date
+  // into the correct UTC instant range rather than assuming date === UTC day.
+  const startIso = new Date(`${date}T00:00:00`).toISOString();
+  const endIso = new Date(`${date}T23:59:59.999`).toISOString();
   const { data, error } = await getSupabaseClient()
     .from('water_entries')
     .select('*')
@@ -826,17 +832,20 @@ export async function getWaterTrend(
   fromDate: string,
   toDate: string
 ): Promise<{ date: string; amount_ml: number }[]> {
+  // Pad the UTC query range by a day on each side so entries near local
+  // midnight aren't dropped, then bucket by the entry's actual local date.
   const { data, error } = await getSupabaseClient()
     .from('water_entries')
     .select('logged_at, amount_ml')
     .eq('user_id', userId)
-    .gte('logged_at', `${fromDate}T00:00:00.000Z`)
-    .lte('logged_at', `${toDate}T23:59:59.999Z`);
+    .gte('logged_at', new Date(`${addDaysLocal(fromDate, -1)}T00:00:00`).toISOString())
+    .lte('logged_at', new Date(`${addDaysLocal(toDate, 1)}T23:59:59.999`).toISOString());
   if (error) throw error;
 
   const byDate = new Map<string, number>();
   for (const row of data ?? []) {
-    const key = row.logged_at.split('T')[0];
+    const key = toLocalDateStr(new Date(row.logged_at));
+    if (key < fromDate || key > toDate) continue;
     byDate.set(key, (byDate.get(key) ?? 0) + row.amount_ml);
   }
   return Array.from(byDate.entries())
@@ -1041,7 +1050,12 @@ export async function getMonthActivity(
   const [{ data: workouts }, { data: foodEntries }, { data: waterEntries }] = await Promise.all([
     supabase.from('workout_sessions').select('workout_date').eq('user_id', userId).gte('workout_date', monthStartIso).lte('workout_date', monthEndIso).not('ended_at', 'is', null),
     supabase.from('food_entries').select('entry_date').eq('user_id', userId).gte('entry_date', monthStartIso).lte('entry_date', monthEndIso),
-    supabase.from('water_entries').select('logged_at, amount_ml').eq('user_id', userId).gte('logged_at', `${monthStartIso}T00:00:00.000Z`).lte('logged_at', `${monthEndIso}T23:59:59.999Z`),
+    supabase
+      .from('water_entries')
+      .select('logged_at, amount_ml')
+      .eq('user_id', userId)
+      .gte('logged_at', new Date(`${addDaysLocal(monthStartIso, -1)}T00:00:00`).toISOString())
+      .lte('logged_at', new Date(`${addDaysLocal(monthEndIso, 1)}T23:59:59.999`).toISOString()),
   ]);
 
   const result: Record<string, DayActivity> = {};
@@ -1055,7 +1069,8 @@ export async function getMonthActivity(
 
   const waterByDate = new Map<string, number>();
   for (const w of waterEntries ?? []) {
-    const key = w.logged_at.split('T')[0];
+    const key = toLocalDateStr(new Date(w.logged_at));
+    if (key < monthStartIso || key > monthEndIso) continue;
     waterByDate.set(key, (waterByDate.get(key) ?? 0) + w.amount_ml);
   }
   for (const [date, total] of Array.from(waterByDate.entries())) {
