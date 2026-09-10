@@ -1,0 +1,30 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8B2BFF"/>
+      <stop offset="1" stop-color="#C84BFF"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+
+  <!-- Dumbbell mark -->
+  <g fill="#FFFFFF">
+    <!-- bar -->
+    <rect x="158" y="238" width="196" height="36" rx="18"/>
+    <!-- left plates -->
+    <rect x="120" y="196" width="34" height="120" rx="12"/>
+    <rect x="90" y="166" width="26" height="180" rx="12"/>
+    <!-- right plates -->
+    <rect x="358" y="196" width="34" height="120" rx="12"/>
+    <rect x="396" y="166" width="26" height="180" rx="12"/>
+  </g>
+
+  <!-- Spark accent -->
+  <path d="M 262 118 L 244 168 L 268 168 L 250 214 L 300 158 L 274 158 L 292 118 Z" fill="#FF6BAA"/>
+</svg>
