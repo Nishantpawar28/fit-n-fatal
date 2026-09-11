@@ -16,3 +16,5 @@ web-build/
 *.log
 .turbo
 *.tsbuildinfo
+.vercel
+.env*
