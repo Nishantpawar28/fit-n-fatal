@@ -197,16 +197,6 @@ export interface BodyMeasurement {
   created_at: string;
 }
 
-export interface ProgressPhoto {
-  id: string;
-  user_id: string;
-  photo_path: string;
-  taken_date: string;
-  notes: string | null;
-  created_at: string;
-  url?: string;
-}
-
 export type GoalType = 'weight' | 'lift' | 'distance' | 'workout_count' | 'water' | 'protein' | 'custom';
 export type GoalStatus = 'active' | 'completed' | 'abandoned';
 

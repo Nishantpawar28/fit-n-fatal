@@ -11,7 +11,6 @@ import type {
   MealType,
   PersonalRecord,
   Profile,
-  ProgressPhoto,
   StrengthDataPoint,
   WaterEntry,
   WorkoutSession,
@@ -854,7 +853,7 @@ export async function getWaterTrend(
 }
 
 // =========================================================================
-// BODY MEASUREMENTS + PROGRESS PHOTOS
+// BODY MEASUREMENTS
 // =========================================================================
 export async function getBodyMeasurements(userId: string, fromDate?: string): Promise<BodyMeasurement[]> {
   let query = getSupabaseClient()
@@ -904,46 +903,6 @@ export async function upsertBodyMeasurement(userId: string, input: BodyMeasureme
 
 export async function deleteBodyMeasurement(id: string): Promise<void> {
   const { error } = await getSupabaseClient().from('body_measurements').delete().eq('id', id);
-  if (error) throw error;
-}
-
-export async function getProgressPhotos(userId: string): Promise<ProgressPhoto[]> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('progress_photos')
-    .select('*')
-    .eq('user_id', userId)
-    .order('taken_date', { ascending: false });
-  if (error) throw error;
-
-  const withUrls = await Promise.all(
-    (data ?? []).map(async (p) => {
-      const { data: signed } = await supabase.storage.from('progress-photos').createSignedUrl(p.photo_path, 3600);
-      return { ...p, url: signed?.signedUrl };
-    })
-  );
-  return withUrls;
-}
-
-export async function uploadProgressPhoto(userId: string, file: File, takenDate: string, notes?: string): Promise<ProgressPhoto> {
-  const supabase = getSupabaseClient();
-  const path = `${userId}/${Date.now()}-${file.name}`;
-  const { error: uploadError } = await supabase.storage.from('progress-photos').upload(path, file);
-  if (uploadError) throw uploadError;
-
-  const { data, error } = await supabase
-    .from('progress_photos')
-    .insert({ user_id: userId, photo_path: path, taken_date: takenDate, notes: notes ?? null })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function deleteProgressPhoto(photo: ProgressPhoto): Promise<void> {
-  const supabase = getSupabaseClient();
-  await supabase.storage.from('progress-photos').remove([photo.photo_path]);
-  const { error } = await supabase.from('progress_photos').delete().eq('id', photo.id);
   if (error) throw error;
 }
 

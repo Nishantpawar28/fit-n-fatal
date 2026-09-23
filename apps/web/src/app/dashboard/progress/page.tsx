@@ -9,13 +9,9 @@ import {
   getExercises,
   getBodyMeasurements,
   upsertBodyMeasurement,
-  getProgressPhotos,
-  uploadProgressPhoto,
-  deleteProgressPhoto,
 } from '@fit-n-fatal/db';
-import type { ProgressPhoto } from '@fit-n-fatal/db';
-import { Card, Button, Input, ConfirmDialog } from '@/components/ui';
-import { getDateRangeStart, type DateRange, formatDate, toLocalDateStr } from '@fit-n-fatal/utils';
+import { Card, Button, Input } from '@/components/ui';
+import { getDateRangeStart, type DateRange, toLocalDateStr } from '@fit-n-fatal/utils';
 import { useProfile } from '@/lib/use-profile';
 
 const RANGES: DateRange[] = ['week', 'month', 'quarter', 'year'];
@@ -41,9 +37,6 @@ export default function ProgressPage() {
   const [chest, setChest] = useState('');
   const [arms, setArms] = useState('');
   const [thighs, setThighs] = useState('');
-  const [photoNotes, setPhotoNotes] = useState('');
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [deletePhoto, setDeletePhoto] = useState<ProgressPhoto | null>(null);
 
   const fromDate = getDateRangeStart(range)?.toISOString();
 
@@ -58,12 +51,6 @@ export default function ProgressPage() {
   const { data: measurements } = useQuery({
     queryKey: ['measurements', userId],
     queryFn: () => getBodyMeasurements(userId!),
-    enabled: !!userId && tab === 'body',
-  });
-
-  const { data: photos } = useQuery({
-    queryKey: ['photos', userId],
-    queryFn: () => getProgressPhotos(userId!),
     enabled: !!userId && tab === 'body',
   });
 
@@ -84,27 +71,13 @@ export default function ProgressPage() {
     },
   });
 
-  const uploadPhotoMutation = useMutation({
-    mutationFn: () => uploadProgressPhoto(userId!, photoFile!, measureDate, photoNotes || undefined),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['photos'] });
-      setPhotoFile(null);
-      setPhotoNotes('');
-    },
-  });
-
-  const deletePhotoMutation = useMutation({
-    mutationFn: (p: ProgressPhoto) => deleteProgressPhoto(p),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['photos'] }),
-  });
-
   return (
     <div>
       <h2 className="font-heading text-2xl font-bold text-fnf-text mb-6">Progress</h2>
 
       <div className="flex gap-2 mb-6">
         <Button variant={tab === 'strength' ? 'primary' : 'secondary'} onClick={() => setTab('strength')}>Strength</Button>
-        <Button variant={tab === 'body' ? 'primary' : 'secondary'} onClick={() => setTab('body')}>Body & Photos</Button>
+        <Button variant={tab === 'body' ? 'primary' : 'secondary'} onClick={() => setTab('body')}>Body</Button>
       </div>
 
       {tab === 'strength' && (
@@ -199,48 +172,8 @@ export default function ProgressPage() {
               </ResponsiveContainer>
             </Card>
           )}
-
-          <Card className="mb-6 max-w-2xl">
-            <p className="font-medium text-fnf-text mb-3">Progress Photos</p>
-            <p className="text-fnf-muted text-xs mb-3">Private — only visible to you.</p>
-            <div className="flex flex-wrap gap-3 mb-3 items-center">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
-                className="text-fnf-secondary text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-purple-500/20 file:text-fnf-violet"
-              />
-              <Input value={photoNotes} onChange={setPhotoNotes} placeholder="Notes (optional)" className="max-w-[200px]" />
-              <Button onClick={() => uploadPhotoMutation.mutate()} disabled={!photoFile || uploadPhotoMutation.isPending}>
-                {uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload'}
-              </Button>
-            </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {(photos ?? []).map((p) => (
-                <div key={p.id} className="relative group">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt={p.notes ?? formatDate(p.taken_date)} className="w-full aspect-square object-cover rounded-lg" />
-                  <button
-                    onClick={() => setDeletePhoto(p)}
-                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full h-6 w-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    ×
-                  </button>
-                  <p className="text-fnf-muted text-[10px] mt-1">{formatDate(p.taken_date)}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
         </>
       )}
-
-      <ConfirmDialog
-        open={!!deletePhoto}
-        onClose={() => setDeletePhoto(null)}
-        onConfirm={() => deletePhoto && deletePhotoMutation.mutate(deletePhoto)}
-        title="Delete photo?"
-        message="This can't be undone."
-      />
     </div>
   );
 }
