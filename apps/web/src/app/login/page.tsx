@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Button, Input, Card } from '@/components/ui';
 
+// Google OAuth is not enabled in Supabase yet. Flip to true once the provider is configured.
+const GOOGLE_AUTH_ENABLED = false;
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -101,9 +104,11 @@ export default function LoginPage() {
               {resetting ? 'Sending reset link...' : 'Forgot password?'}
             </button>
           </form>
-          <Button onClick={handleGoogle} variant="secondary" className="w-full mt-3">
-            Continue with Google
-          </Button>
+          {GOOGLE_AUTH_ENABLED && (
+            <Button onClick={handleGoogle} variant="secondary" className="w-full mt-3">
+              Continue with Google
+            </Button>
+          )}
           <p className="text-center text-fnf-muted text-sm mt-4">
             No account?{' '}
             <Link href="/signup" className="text-fnf-violet hover:underline">Sign up</Link>
