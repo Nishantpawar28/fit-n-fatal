@@ -1,4 +1,4 @@
-export const MUSCLE_GROUPS = ['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Full Body', 'Cardio', 'Other'] as const;
+export const MUSCLE_GROUPS = ['Chest', 'Back', 'Legs', 'Shoulders', 'Biceps', 'Triceps', 'Forearms', 'Arms', 'Core', 'Full Body', 'Cardio', 'Other'] as const;
 
 export const EQUIPMENT_OPTIONS = [
   'Barbell',

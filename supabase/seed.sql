@@ -1,4 +1,5 @@
--- Seed 50+ system exercises (user_id IS NULL = visible to all)
+-- Seed core system exercises (user_id IS NULL = visible to all).
+-- The rest of the library lives in migrations/004_expand_exercise_library.sql.
 INSERT INTO exercises (name, muscle_group, equipment, is_custom) VALUES
   ('Barbell Bench Press', 'Chest', 'Barbell', false),
   ('Incline Barbell Press', 'Chest', 'Barbell', false),
@@ -8,7 +9,7 @@ INSERT INTO exercises (name, muscle_group, equipment, is_custom) VALUES
   ('Dumbbell Flyes', 'Chest', 'Dumbbell', false),
   ('Cable Crossover', 'Chest', 'Cable', false),
   ('Push-Ups', 'Chest', 'Bodyweight', false),
-  ('Dips', 'Chest', 'Bodyweight', false),
+  ('Chest Dips', 'Chest', 'Bodyweight', false),
   ('Machine Chest Press', 'Chest', 'Machine', false),
   ('Barbell Back Squat', 'Legs', 'Barbell', false),
   ('Front Squat', 'Legs', 'Barbell', false),
@@ -39,14 +40,14 @@ INSERT INTO exercises (name, muscle_group, equipment, is_custom) VALUES
   ('Front Raises', 'Shoulders', 'Dumbbell', false),
   ('Rear Delt Flyes', 'Shoulders', 'Dumbbell', false),
   ('Upright Row', 'Shoulders', 'Barbell', false),
-  ('Barbell Curl', 'Arms', 'Barbell', false),
-  ('Dumbbell Curl', 'Arms', 'Dumbbell', false),
-  ('Hammer Curl', 'Arms', 'Dumbbell', false),
-  ('Preacher Curl', 'Arms', 'Barbell', false),
-  ('Tricep Pushdown', 'Arms', 'Cable', false),
-  ('Skull Crushers', 'Arms', 'Barbell', false),
-  ('Overhead Tricep Extension', 'Arms', 'Dumbbell', false),
-  ('Close-Grip Bench Press', 'Arms', 'Barbell', false),
+  ('Barbell Curl', 'Biceps', 'Barbell', false),
+  ('Dumbbell Curl', 'Biceps', 'Dumbbell', false),
+  ('Hammer Curl', 'Biceps', 'Dumbbell', false),
+  ('Preacher Curl', 'Biceps', 'Barbell', false),
+  ('Tricep Pushdown', 'Triceps', 'Cable', false),
+  ('Skull Crushers', 'Triceps', 'Barbell', false),
+  ('Overhead Tricep Extension', 'Triceps', 'Dumbbell', false),
+  ('Close-Grip Bench Press', 'Triceps', 'Barbell', false),
   ('Plank', 'Core', 'Bodyweight', false),
   ('Hanging Leg Raises', 'Core', 'Bodyweight', false),
   ('Cable Crunch', 'Core', 'Cable', false),

@@ -23,7 +23,7 @@ fit-n-fatal/
 │   └── utils/      # Weight conversion, dates, theme
 └── supabase/
     ├── migrations/ # DB schema + RLS policies
-    └── seed.sql    # 58 pre-loaded exercises
+    └── seed.sql    # core exercises (300+ total with migrations)
 ```
 
 ## Setup
@@ -31,7 +31,7 @@ fit-n-fatal/
 ### 1. Supabase
 
 1. Create a project at [supabase.com](https://supabase.com)
-2. Run `supabase/migrations/001_initial_schema.sql` in the SQL Editor
+2. Run every file in `supabase/migrations/` in order (001 → 004) in the SQL Editor
 3. Run `supabase/seed.sql` to load exercises
 4. Enable Google OAuth in Authentication → Providers (optional)
 5. Copy your project URL and anon key
@@ -67,7 +67,7 @@ npm run web
 
 - **Auth** — Email/password signup & login, Google OAuth, session persistence
 - **Workout Logger** — Start session, add exercises, log sets (reps + weight + RPE)
-- **Exercise Library** — 58 pre-loaded exercises, search, custom exercises
+- **Exercise Library** — 300+ pre-loaded exercises across every muscle group, search, custom exercises
 - **Workout History** — Date list, expandable details, filters
 - **Progress Dashboard** — PRs, weekly/monthly/quarterly strength curves
 - **Dark Purple Theme** — `#0D0D14` bg, `#8B2BFF` → `#C84BFF` gradient, `#FF6BAA` accents
