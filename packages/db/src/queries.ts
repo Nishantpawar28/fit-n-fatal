@@ -6,8 +6,6 @@ import type {
   ExerciseType,
   Food,
   FoodEntry,
-  Goal,
-  GoalType,
   MealType,
   PersonalRecord,
   Profile,
@@ -20,7 +18,16 @@ import type {
   WorkoutTemplate,
   WorkoutType,
 } from './types';
-import { calculateOneRepMax, calculateVolume, startOfDay, toLocalDateStr, addDaysLocal } from '@fit-n-fatal/utils';
+import {
+  calculateOneRepMax,
+  calculateVolume,
+  toLocalDateStr,
+  addDaysLocal,
+  computePersonalRecords,
+  computeWorkoutStats,
+  type SlimSession,
+  type StatsSession,
+} from '@fit-n-fatal/utils';
 
 // =========================================================================
 // PROFILE
@@ -71,6 +78,17 @@ export async function getExercises(search?: string, muscleGroup?: string): Promi
   const { data, error } = await query;
   if (error) throw error;
   return data ?? [];
+}
+
+/**
+ * The whole exercise library (system + your custom ones) in one request.
+ * It changes rarely, so the app caches it and searches it locally —
+ * typing in a search box no longer hits the server on every keystroke.
+ */
+export async function getExerciseLibrary(): Promise<Exercise[]> {
+  return fetchAllRows<Exercise>((from, to) =>
+    getSupabaseClient().from('exercises').select('*').order('name').range(from, to)
+  );
 }
 
 export async function getFavoriteExerciseIds(userId: string): Promise<Set<string>> {
@@ -148,11 +166,23 @@ export async function getLastUsedSets(
   userId: string,
   exerciseId: string
 ): Promise<{ date: string; sets: WorkoutSet[] } | null> {
-  const sessions = await getWorkoutHistory(userId, { exerciseId });
-  for (const session of sessions) {
-    const we = session.workout_exercises.find((e) => e.exercise_id === exerciseId);
-    if (we && we.sets.length > 0) {
-      return { date: session.started_at, sets: we.sets };
+  // Only the 3 most recent finished sessions that contain this exercise
+  // (filtered server-side), instead of downloading the whole history.
+  const { data, error } = await getSupabaseClient()
+    .from('workout_sessions')
+    .select('started_at, workout_exercises!inner(exercise_id, sets:workout_sets(*))')
+    .eq('user_id', userId)
+    .eq('workout_exercises.exercise_id', exerciseId)
+    .not('ended_at', 'is', null)
+    .order('workout_date', { ascending: false })
+    .order('started_at', { ascending: false })
+    .limit(3);
+  if (error) throw error;
+
+  for (const session of (data ?? []) as any[]) {
+    for (const we of session.workout_exercises ?? []) {
+      const sets = ((we.sets ?? []) as WorkoutSet[]).sort((a, b) => a.set_number - b.set_number);
+      if (sets.length > 0) return { date: session.started_at, sets };
     }
   }
   return null;
@@ -366,24 +396,177 @@ export async function copyLastWorkoutSets(userId: string, sessionId: string, exe
 }
 
 export async function repeatLastWorkout(userId: string): Promise<WorkoutSession | null> {
-  const history = await getWorkoutHistory(userId, {});
-  const last = history[0];
+  const { sessions } = await getWorkoutHistoryPage(userId, { page: 0, pageSize: 1 });
+  const last = sessions[0];
   if (!last) return null;
 
+  const supabase = getSupabaseClient();
   const session = await startWorkoutSession(userId, {
     workoutType: last.workout_type,
     name: last.name ?? undefined,
   });
 
-  for (const we of last.workout_exercises.sort((a, b) => a.order_index - b.order_index)) {
-    const newWe = await addExerciseToSession(session.id, we.exercise_id, we.order_index);
-    const workingSets = we.sets.filter((s) => !s.is_warmup);
-    for (const s of workingSets) {
-      await logSet(newWe.id, s.set_number, { reps: s.reps, weight: s.weight, rpe: s.rpe ?? undefined, completed: false });
-    }
+  const ordered = [...last.workout_exercises].sort((a, b) => a.order_index - b.order_index);
+  if (ordered.length === 0) return session;
+
+  // One insert for all exercises, one for all sets (was 1 request per row).
+  const { data: newWes, error: weError } = await supabase
+    .from('workout_exercises')
+    .insert(ordered.map((we) => ({ session_id: session.id, exercise_id: we.exercise_id, order_index: we.order_index })))
+    .select('id, order_index');
+  if (weError) throw weError;
+
+  const idByOrder = new Map((newWes ?? []).map((r: { id: string; order_index: number }) => [r.order_index, r.id]));
+  const setRows = ordered.flatMap((we) =>
+    we.sets
+      .filter((s) => !s.is_warmup)
+      .map((s) => ({
+        workout_exercise_id: idByOrder.get(we.order_index)!,
+        set_number: s.set_number,
+        reps: s.reps,
+        weight: s.weight,
+        rpe: s.rpe ?? null,
+        is_warmup: false,
+        completed: false,
+      }))
+  );
+  if (setRows.length > 0) {
+    const { error: setError } = await supabase.from('workout_sets').insert(setRows);
+    if (setError) throw setError;
   }
 
   return session;
+}
+
+const SESSION_DETAIL_SELECT = `
+  *,
+  workout_exercises (
+    *,
+    exercise:exercises (*),
+    sets:workout_sets (*)
+  )
+`;
+
+function sortSessionsNewestFirst<T extends { workout_date: string; started_at: string }>(rows: T[]): T[] {
+  return rows.sort((a, b) => b.workout_date.localeCompare(a.workout_date) || b.started_at.localeCompare(a.started_at));
+}
+
+/** Supabase caps a response at 1000 rows; page through to get them all. */
+async function fetchAllRows<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
+  chunk = 1000
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += chunk) {
+    const { data, error } = await build(from, from + chunk - 1);
+    if (error) throw error;
+    out.push(...(data ?? []));
+    if (!data || data.length < chunk) return out;
+  }
+}
+
+export interface WorkoutHistoryPageOptions {
+  page: number;
+  pageSize?: number;
+  workoutType?: WorkoutType | '';
+  date?: string;
+  nameQuery?: string;
+  exerciseId?: string;
+  muscleGroup?: string;
+}
+
+export interface WorkoutHistoryPage {
+  sessions: WorkoutSessionWithDetails[];
+  hasMore: boolean;
+}
+
+/**
+ * One page of finished workouts (newest first), with all filters applied
+ * in the database. Fetches pageSize + 1 rows to know whether more exist.
+ */
+export async function getWorkoutHistoryPage(userId: string, opts: WorkoutHistoryPageOptions): Promise<WorkoutHistoryPage> {
+  const supabase = getSupabaseClient();
+  const pageSize = opts.pageSize ?? 10;
+  const from = opts.page * pageSize;
+  const to = from + pageSize; // inclusive → pageSize + 1 rows
+
+  const needsExerciseJoin = !!opts.exerciseId || !!opts.muscleGroup;
+
+  // When filtering by exercise / muscle we first find the matching session
+  // ids (cheap), then load full details for just those ids.
+  let query = supabase
+    .from('workout_sessions')
+    .select(
+      needsExerciseJoin
+        ? opts.muscleGroup
+          ? 'id, workout_exercises!inner(exercise_id, exercises!inner(muscle_group))'
+          : 'id, workout_exercises!inner(exercise_id)'
+        : SESSION_DETAIL_SELECT
+    )
+    .eq('user_id', userId)
+    .not('ended_at', 'is', null);
+
+  if (opts.workoutType) query = query.eq('workout_type', opts.workoutType);
+  if (opts.date) query = query.eq('workout_date', opts.date);
+  if (opts.nameQuery?.trim()) query = query.ilike('name', `%${opts.nameQuery.trim()}%`);
+  if (opts.exerciseId) query = query.eq('workout_exercises.exercise_id', opts.exerciseId);
+  if (opts.muscleGroup) query = query.eq('workout_exercises.exercises.muscle_group', opts.muscleGroup);
+
+  const { data, error } = await query
+    .order('workout_date', { ascending: false })
+    .order('started_at', { ascending: false })
+    .range(from, to);
+  if (error) throw error;
+
+  const rows = (data ?? []) as any[];
+  const hasMore = rows.length > pageSize;
+  const pageRows = rows.slice(0, pageSize);
+
+  if (!needsExerciseJoin) {
+    return { sessions: pageRows.map(normalizeSession), hasMore };
+  }
+
+  const ids = pageRows.map((r) => r.id as string);
+  if (ids.length === 0) return { sessions: [], hasMore: false };
+  const { data: details, error: detailError } = await supabase.from('workout_sessions').select(SESSION_DETAIL_SELECT).in('id', ids);
+  if (detailError) throw detailError;
+  return { sessions: sortSessionsNewestFirst((details ?? []).map(normalizeSession)), hasMore };
+}
+
+/** Lightweight name search for global search: no exercises or sets. */
+export async function searchWorkoutsByName(
+  userId: string,
+  q: string,
+  limit = 5
+): Promise<Pick<WorkoutSession, 'id' | 'name' | 'workout_date'>[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('workout_sessions')
+    .select('id, name, workout_date')
+    .eq('user_id', userId)
+    .not('ended_at', 'is', null)
+    .ilike('name', `%${q.trim()}%`)
+    .order('workout_date', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Distinct exercises the user has ever logged (for history filters). */
+export async function getLoggedExerciseOptions(userId: string): Promise<{ id: string; name: string; muscle_group: string }[]> {
+  const rows = await fetchAllRows<any>((from, to) =>
+    getSupabaseClient()
+      .from('workout_exercises')
+      .select('exercise_id, exercise:exercises(name, muscle_group), session:workout_sessions!inner(user_id)')
+      .eq('session.user_id', userId)
+      .range(from, to)
+  );
+  const map = new Map<string, { id: string; name: string; muscle_group: string }>();
+  for (const r of rows) {
+    if (r.exercise && !map.has(r.exercise_id)) {
+      map.set(r.exercise_id, { id: r.exercise_id, name: r.exercise.name, muscle_group: r.exercise.muscle_group });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function getWorkoutHistory(
@@ -426,127 +609,82 @@ export async function getWorkoutHistory(
 }
 
 export async function getWorkoutStats(userId: string): Promise<WorkoutStats> {
-  const sessions = await getWorkoutHistory(userId);
-  const now = new Date();
-  // Compare local-calendar-date strings throughout (not Date objects) —
-  // workout_date is a plain DATE column representing the user's local day,
-  // and parsing it back into a Date would reinterpret it as UTC midnight,
-  // which drifts against local "today"/"this week" boundaries by timezone.
-  const todayStr = toLocalDateStr(now);
-  const weekStartDate = startOfDay(new Date(now));
-  weekStartDate.setDate(weekStartDate.getDate() - weekStartDate.getDay());
-  const weekStartStr = toLocalDateStr(weekStartDate);
-  const monthStartStr = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
-
-  let workoutsThisWeek = 0;
-  let workoutsThisMonth = 0;
-  let totalSets = 0;
-  let totalDurationMinutes = 0;
-  const daysWithWorkouts = new Set<string>();
-
-  for (const s of sessions) {
-    if (s.workout_date >= weekStartStr) workoutsThisWeek++;
-    if (s.workout_date >= monthStartStr) workoutsThisMonth++;
-    daysWithWorkouts.add(s.workout_date);
-    totalSets += s.workout_exercises.reduce((sum, we) => sum + we.sets.length, 0);
-    if (s.duration_minutes) {
-      totalDurationMinutes += s.duration_minutes;
-    } else if (s.ended_at) {
-      totalDurationMinutes += Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000);
-    }
-  }
-
-  // Streak: consecutive days (from today or yesterday) with a workout
-  let streak = 0;
-  let cursorStr = todayStr;
-  if (!daysWithWorkouts.has(cursorStr)) cursorStr = addDaysLocal(cursorStr, -1);
-  while (daysWithWorkouts.has(cursorStr)) {
-    streak++;
-    cursorStr = addDaysLocal(cursorStr, -1);
-  }
-
-  return {
-    workoutsThisWeek,
-    workoutsThisMonth,
-    currentStreak: streak,
-    totalSessions: sessions.length,
-    totalDurationMinutes,
-    totalSets,
-  };
+  // Only dates, durations and a set COUNT per session — no exercise rows,
+  // no set rows. A few bytes per workout instead of the full history.
+  const rows = await fetchAllRows<any>((from, to) =>
+    getSupabaseClient()
+      .from('workout_sessions')
+      .select('workout_date, started_at, ended_at, duration_minutes, workout_exercises(workout_sets(count))')
+      .eq('user_id', userId)
+      .not('ended_at', 'is', null)
+      .order('workout_date', { ascending: false })
+      .range(from, to)
+  );
+  const sessions: StatsSession[] = rows.map((r) => ({
+    workout_date: r.workout_date,
+    started_at: r.started_at,
+    ended_at: r.ended_at,
+    duration_minutes: r.duration_minutes,
+    set_count: (r.workout_exercises ?? []).reduce(
+      (sum: number, we: any) => sum + (we.workout_sets?.[0]?.count ?? 0),
+      0
+    ),
+  }));
+  return computeWorkoutStats(sessions);
 }
 
 export async function getPersonalRecords(userId: string): Promise<PersonalRecord[]> {
-  const sessions = await getWorkoutHistory(userId);
-  const prMap = new Map<string, PersonalRecord>();
-
-  for (const session of sessions) {
-    for (const we of session.workout_exercises) {
-      const workingSets = we.sets.filter((s) => !s.is_warmup);
-      if (workingSets.length === 0) continue;
-
-      const sessionVolume = workingSets.reduce((sum, s) => sum + calculateVolume(s.reps, s.weight), 0);
-      let existing = prMap.get(we.exercise_id);
-
-      for (const set of workingSets) {
-        const oneRm = calculateOneRepMax(set.weight, set.reps);
-        if (!existing) {
-          existing = {
-            exercise_id: we.exercise_id,
-            exercise_name: we.exercise.name,
-            max_weight: set.weight,
-            reps_at_max: set.reps,
-            estimated_1rm: oneRm,
-            max_volume_session: sessionVolume,
-            best_reps_at_weight: { weight: set.weight, reps: set.reps },
-            achieved_at: session.started_at,
-          };
-        } else {
-          if (set.weight > existing.max_weight || (set.weight === existing.max_weight && set.reps > existing.reps_at_max)) {
-            existing = { ...existing, max_weight: set.weight, reps_at_max: set.reps, achieved_at: session.started_at };
-          }
-          if (oneRm > existing.estimated_1rm) {
-            existing = { ...existing, estimated_1rm: oneRm };
-          }
-          if (set.reps > existing.best_reps_at_weight.reps) {
-            existing = { ...existing, best_reps_at_weight: { weight: set.weight, reps: set.reps } };
-          }
-        }
-      }
-
-      if (existing) {
-        existing.max_volume_session = Math.max(existing.max_volume_session, sessionVolume);
-        prMap.set(we.exercise_id, existing);
-      }
-    }
-  }
-
-  return Array.from(prMap.values()).sort((a, b) => b.max_weight - a.max_weight);
+  // Slim projection: weight/reps/warmup per set + exercise name. Roughly
+  // 10x smaller than the full history payload it replaces.
+  const rows = await fetchAllRows<any>((from, to) =>
+    getSupabaseClient()
+      .from('workout_sessions')
+      .select('started_at, workout_exercises(exercise_id, exercise:exercises(name), sets:workout_sets(weight, reps, is_warmup))')
+      .eq('user_id', userId)
+      .not('ended_at', 'is', null)
+      .order('workout_date', { ascending: false })
+      .order('started_at', { ascending: false })
+      .range(from, to)
+  );
+  const sessions: SlimSession[] = rows.map((r) => ({
+    started_at: r.started_at,
+    workout_exercises: (r.workout_exercises ?? []).map((we: any) => ({
+      exercise_id: we.exercise_id,
+      exercise_name: we.exercise?.name ?? '',
+      sets: we.sets ?? [],
+    })),
+  }));
+  return computePersonalRecords(sessions);
 }
 
 export async function getStrengthCurve(userId: string, exerciseId: string, fromDate?: string): Promise<StrengthDataPoint[]> {
-  const sessions = await getWorkoutHistory(userId, { exerciseId, fromDate });
+  let query = getSupabaseClient()
+    .from('workout_sessions')
+    .select('workout_date, workout_exercises!inner(exercise_id, sets:workout_sets(weight, reps, is_warmup))')
+    .eq('user_id', userId)
+    .eq('workout_exercises.exercise_id', exerciseId)
+    .not('ended_at', 'is', null);
+  if (fromDate) query = query.gte('workout_date', fromDate.slice(0, 10));
+  const { data, error } = await query.order('workout_date', { ascending: true });
+  if (error) throw error;
+
   const points: StrengthDataPoint[] = [];
-
-  for (const session of sessions) {
-    const we = session.workout_exercises.find((e) => e.exercise_id === exerciseId);
-    if (!we) continue;
-
-    const workingSets = we.sets.filter((s) => !s.is_warmup);
-    if (workingSets.length === 0) continue;
-
-    const maxWeight = Math.max(...workingSets.map((s) => s.weight));
-    const bestSet = workingSets.find((s) => s.weight === maxWeight)!;
-    const totalVolume = workingSets.reduce((sum, s) => sum + calculateVolume(s.reps, s.weight), 0);
-
-    points.push({
-      date: session.workout_date,
-      max_weight: maxWeight,
-      reps_at_max: bestSet.reps,
-      total_volume: totalVolume,
-      estimated_1rm: calculateOneRepMax(bestSet.weight, bestSet.reps),
-    });
+  for (const session of (data ?? []) as any[]) {
+    for (const we of session.workout_exercises ?? []) {
+      const workingSets = ((we.sets ?? []) as { weight: number; reps: number; is_warmup: boolean | null }[]).filter((s) => !s.is_warmup);
+      if (workingSets.length === 0) continue;
+      const maxWeight = Math.max(...workingSets.map((s) => Number(s.weight)));
+      const bestSet = workingSets.find((s) => Number(s.weight) === maxWeight)!;
+      points.push({
+        date: session.workout_date,
+        max_weight: maxWeight,
+        reps_at_max: bestSet.reps,
+        total_volume: workingSets.reduce((sum, s) => sum + calculateVolume(s.reps, Number(s.weight)), 0),
+        estimated_1rm: calculateOneRepMax(maxWeight, bestSet.reps),
+      });
+      break;
+    }
   }
-
   return points.sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -615,8 +753,15 @@ export async function startWorkoutFromTemplate(userId: string, template: Workout
     name: template.name,
     templateId: template.id,
   });
-  for (const te of template.exercises ?? []) {
-    await addExerciseToSession(session.id, te.exercise_id, te.order_index);
+  // One insert for every exercise instead of one request each.
+  const rows = (template.exercises ?? []).map((te) => ({
+    session_id: session.id,
+    exercise_id: te.exercise_id,
+    order_index: te.order_index,
+  }));
+  if (rows.length > 0) {
+    const { error } = await getSupabaseClient().from('workout_exercises').insert(rows);
+    if (error) throw error;
   }
   return session;
 }
@@ -907,74 +1052,11 @@ export async function deleteBodyMeasurement(id: string): Promise<void> {
 }
 
 // =========================================================================
-// GOALS
-// =========================================================================
-export async function getGoals(userId: string): Promise<Goal[]> {
-  const { data, error } = await getSupabaseClient()
-    .from('goals')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return data ?? [];
-}
-
-export interface GoalInput {
-  type: GoalType;
-  title: string;
-  targetValue: number;
-  currentValue?: number;
-  unit: string;
-  exerciseId?: string;
-  deadline?: string;
-}
-
-export async function createGoal(userId: string, input: GoalInput): Promise<Goal> {
-  const { data, error } = await getSupabaseClient()
-    .from('goals')
-    .insert({
-      user_id: userId,
-      type: input.type,
-      title: input.title,
-      target_value: input.targetValue,
-      current_value: input.currentValue ?? 0,
-      unit: input.unit,
-      exercise_id: input.exerciseId ?? null,
-      deadline: input.deadline ?? null,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function updateGoalProgress(goalId: string, currentValue: number, target: number): Promise<Goal> {
-  const completed = currentValue >= target;
-  const { data, error } = await getSupabaseClient()
-    .from('goals')
-    .update({
-      current_value: currentValue,
-      status: completed ? 'completed' : 'active',
-      completed_at: completed ? new Date().toISOString() : null,
-    })
-    .eq('id', goalId)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function deleteGoal(goalId: string): Promise<void> {
-  const { error } = await getSupabaseClient().from('goals').delete().eq('id', goalId);
-  if (error) throw error;
-}
-
-// =========================================================================
 // DATA EXPORT
 // =========================================================================
 export async function exportUserData(userId: string) {
   const supabase = getSupabaseClient();
-  const [profile, exercises, workouts, templates, foods, foodEntries, waterEntries, measurements, goals] = await Promise.all([
+  const [profile, exercises, workouts, templates, foods, foodEntries, waterEntries, measurements] = await Promise.all([
     getProfile(userId),
     supabase.from('exercises').select('*').eq('user_id', userId).then((r) => r.data ?? []),
     getWorkoutHistory(userId),
@@ -983,10 +1065,9 @@ export async function exportUserData(userId: string) {
     supabase.from('food_entries').select('*').eq('user_id', userId).order('entry_date').then((r) => r.data ?? []),
     supabase.from('water_entries').select('*').eq('user_id', userId).order('logged_at').then((r) => r.data ?? []),
     getBodyMeasurements(userId),
-    getGoals(userId),
   ]);
 
-  return { profile, exercises, workouts, templates, foods, foodEntries, waterEntries, measurements, goals, exportedAt: new Date().toISOString() };
+  return { profile, exercises, workouts, templates, foods, foodEntries, waterEntries, measurements, exportedAt: new Date().toISOString() };
 }
 
 // =========================================================================

@@ -31,7 +31,7 @@ fit-n-fatal/
 ### 1. Supabase
 
 1. Create a project at [supabase.com](https://supabase.com)
-2. Run every file in `supabase/migrations/` in order (001 → 005) in the SQL Editor
+2. Run every file in `supabase/migrations/` in order (001 → 006) in the SQL Editor
 3. Run `supabase/seed.sql` to load exercises
 4. Enable Google OAuth in Authentication → Providers (optional)
 5. Copy your project URL and anon key

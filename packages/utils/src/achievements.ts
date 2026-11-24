@@ -10,7 +10,6 @@ export interface AchievementStats {
   workoutStreak: number;
   hydrationStreak: number;
   totalPRs: number;
-  goalsCompleted: number;
 }
 
 export const ACHIEVEMENT_DEFS: (AchievementDef & { threshold: (s: AchievementStats) => boolean })[] = [
@@ -22,8 +21,6 @@ export const ACHIEVEMENT_DEFS: (AchievementDef & { threshold: (s: AchievementSta
   { key: 'workouts_10', title: '10 Workouts Completed', description: 'Completed 10 workout sessions', icon: '🏋️', threshold: (s) => s.totalWorkouts >= 10 },
   { key: 'workouts_50', title: '50 Workouts Completed', description: 'Completed 50 workout sessions', icon: '🏋️', threshold: (s) => s.totalWorkouts >= 50 },
   { key: 'workouts_100', title: '100 Workouts Completed', description: 'Completed 100 workout sessions', icon: '🏋️', threshold: (s) => s.totalWorkouts >= 100 },
-  { key: 'goals_1', title: 'Goal Crusher', description: 'Completed your first goal', icon: '🎯', threshold: (s) => s.goalsCompleted >= 1 },
-  { key: 'goals_5', title: '5 Goals Completed', description: 'Completed 5 goals', icon: '🎯', threshold: (s) => s.goalsCompleted >= 5 },
 ];
 
 export function computeAchievements(stats: AchievementStats): (AchievementDef & { unlocked: boolean })[] {

@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getWorkoutStats, getPersonalRecords, getGoals, getWaterTrend } from '@fit-n-fatal/db';
+import { getWorkoutStats, getPersonalRecords, getWaterTrend } from '@fit-n-fatal/db';
 import { Card } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
 import { computeAchievements, toLocalDateStr, addDaysLocal } from '@fit-n-fatal/utils';
@@ -13,7 +13,6 @@ export default function AchievementsPage() {
 
   const { data: stats } = useQuery({ queryKey: ['workoutStats', userId], queryFn: () => getWorkoutStats(userId!), enabled: !!userId });
   const { data: prs } = useQuery({ queryKey: ['prs', userId], queryFn: () => getPersonalRecords(userId!), enabled: !!userId });
-  const { data: goals } = useQuery({ queryKey: ['goals', userId], queryFn: () => getGoals(userId!), enabled: !!userId });
 
   const fromDate = useMemo(() => {
     const d = new Date();
@@ -49,7 +48,6 @@ export default function AchievementsPage() {
     workoutStreak: stats?.currentStreak ?? 0,
     hydrationStreak,
     totalPRs: prs?.length ?? 0,
-    goalsCompleted: (goals ?? []).filter((g) => g.status === 'completed').length,
   });
 
   const unlocked = achievements.filter((a) => a.unlocked);

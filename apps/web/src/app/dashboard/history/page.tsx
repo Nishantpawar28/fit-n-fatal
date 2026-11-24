@@ -2,11 +2,15 @@
 
 import { useEffect, useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
-import { getWorkoutHistory, deleteWorkoutSession, updateSet, deleteSet } from '@fit-n-fatal/db';
+import { getWorkoutHistoryPage, getLoggedExerciseOptions, deleteWorkoutSession, updateSet, deleteSet } from '@fit-n-fatal/db';
+import type { WorkoutType } from '@fit-n-fatal/db';
 import { Card, Select, Input, Badge, ConfirmDialog, EmptyState } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
+import { useDebouncedValue, useOnVisible } from '@/lib/hooks';
+
+const PAGE_SIZE = 10;
 import { formatDate, formatDuration, WORKOUT_TYPE_LABELS, WORKOUT_TYPES } from '@fit-n-fatal/utils';
 
 function HistoryInner() {
@@ -27,42 +31,55 @@ function HistoryInner() {
     if (q) setNameQuery(q);
   }, [searchParams]);
 
-  const { data: history } = useQuery({
-    queryKey: ['history', userId],
-    queryFn: () => getWorkoutHistory(userId!),
+  const debouncedName = useDebouncedValue(nameQuery, 300);
+  const filters = {
+    workoutType: typeFilter as WorkoutType | '',
+    date: dateFilter,
+    nameQuery: debouncedName,
+    exerciseId: exerciseFilter,
+    muscleGroup: muscleFilter,
+  };
+
+  // 10 workouts at a time; the next 10 load automatically as you scroll.
+  const historyQuery = useInfiniteQuery({
+    queryKey: ['history', userId, 'pages', filters],
+    queryFn: ({ pageParam }) => getWorkoutHistoryPage(userId!, { ...filters, page: pageParam, pageSize: PAGE_SIZE }),
+    initialPageParam: 0,
+    getNextPageParam: (last, all) => (last.hasMore ? all.length : undefined),
     enabled: !!userId,
+  });
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = historyQuery;
+  const sessions = useMemo(() => historyQuery.data?.pages.flatMap((p) => p.sessions) ?? [], [historyQuery.data]);
+  const loadMoreRef = useOnVisible<HTMLDivElement>(() => {
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, !!hasNextPage);
+
+  // Filter dropdown options: every exercise you've ever logged (tiny query).
+  const { data: loggedExercises } = useQuery({
+    queryKey: ['loggedExercises', userId],
+    queryFn: () => getLoggedExerciseOptions(userId!),
+    enabled: !!userId,
+    staleTime: 10 * 60_000,
   });
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['history'] });
     queryClient.invalidateQueries({ queryKey: ['prs'] });
     queryClient.invalidateQueries({ queryKey: ['workoutStats'] });
+    queryClient.invalidateQueries({ queryKey: ['lastUsed'] });
   };
 
   const deleteWorkoutMutation = useMutation({ mutationFn: (id: string) => deleteWorkoutSession(id), onSuccess: invalidate });
   const updateSetMutation = useMutation({ mutationFn: ({ setId, patch }: { setId: string; patch: any }) => updateSet(setId, patch), onSuccess: invalidate });
   const deleteSetMutation = useMutation({ mutationFn: (setId: string) => deleteSet(setId), onSuccess: invalidate });
 
-  const exerciseOptions = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const s of history ?? []) for (const we of s.workout_exercises) names.set(we.exercise_id, we.exercise.name);
-    return Array.from(names.entries()).map(([value, label]) => ({ value, label }));
-  }, [history]);
-
+  const exerciseOptions = useMemo(() => (loggedExercises ?? []).map((e) => ({ value: e.id, label: e.name })), [loggedExercises]);
   const muscleOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const s of history ?? []) for (const we of s.workout_exercises) set.add(we.exercise.muscle_group);
-    return Array.from(set).map((m) => ({ value: m, label: m }));
-  }, [history]);
+    const set = new Set((loggedExercises ?? []).map((e) => e.muscle_group));
+    return Array.from(set).sort().map((m) => ({ value: m, label: m }));
+  }, [loggedExercises]);
 
-  const filtered = (history ?? []).filter((s) => {
-    if (typeFilter && s.workout_type !== typeFilter) return false;
-    if (dateFilter && s.workout_date !== dateFilter) return false;
-    if (nameQuery && !(s.name ?? '').toLowerCase().includes(nameQuery.toLowerCase())) return false;
-    if (exerciseFilter && !s.workout_exercises.some((we) => we.exercise_id === exerciseFilter)) return false;
-    if (muscleFilter && !s.workout_exercises.some((we) => we.exercise.muscle_group === muscleFilter)) return false;
-    return true;
-  });
+  const filtered = sessions;
 
   return (
     <div>
@@ -144,7 +161,24 @@ function HistoryInner() {
             </Card>
           );
         })}
-        {filtered.length === 0 && <EmptyState icon="📖" title="No workouts found" message="Adjust your filters or log a new workout." />}
+        {historyQuery.isLoading && <p className="text-fnf-muted text-sm text-center py-6">Loading workouts…</p>}
+        {!historyQuery.isLoading && filtered.length === 0 && (
+          <EmptyState icon="📖" title="No workouts found" message="Adjust your filters or log a new workout." />
+        )}
+        {hasNextPage && (
+          <div ref={loadMoreRef} className="flex justify-center py-4">
+            <button
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="text-fnf-violet text-sm hover:underline disabled:opacity-60"
+            >
+              {isFetchingNextPage ? 'Loading more…' : 'Load more workouts'}
+            </button>
+          </div>
+        )}
+        {!hasNextPage && filtered.length > PAGE_SIZE && (
+          <p className="text-fnf-muted text-xs text-center py-4">That&apos;s all {filtered.length} workouts.</p>
+        )}
       </div>
 
       <ConfirmDialog

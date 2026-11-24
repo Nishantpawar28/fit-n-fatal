@@ -6,6 +6,7 @@ import { Trash2, Copy, Plus } from 'lucide-react';
 import { getLastUsedSets } from '@fit-n-fatal/db';
 import type { WorkoutExercise, WorkoutSet, Exercise } from '@fit-n-fatal/db';
 import { Card, Button, ConfirmDialog } from '@/components/ui';
+import { isTempId } from '@/lib/hooks';
 
 type WE = WorkoutExercise & { exercise: Exercise; sets: WorkoutSet[] };
 
@@ -32,6 +33,8 @@ export function ExerciseCard({
     queryKey: ['lastUsed', userId, we.exercise_id],
     queryFn: () => getLastUsedSets(userId, we.exercise_id),
     enabled: !!userId,
+    // "Last time" cannot change mid-workout; it is refreshed when you finish.
+    staleTime: 30 * 60_000,
   });
 
   const lastWorkingSets = (last?.sets ?? []).filter((s) => !s.is_warmup);
@@ -46,6 +49,8 @@ export function ExerciseCard({
   const [draftReps, setDraftReps] = useState(String(lastSet?.reps ?? lastWorkingSets[0]?.reps ?? ''));
 
   const totalVolume = sets.reduce((sum, s) => sum + s.weight * s.reps, 0);
+
+  const saving = isTempId(we.id);
 
   const handleAddSet = () => {
     const w = parseFloat(draftWeight);
@@ -77,7 +82,7 @@ export function ExerciseCard({
 
       <div className="space-y-2 mb-3">
         {sets.map((s, i) => (
-          <div key={s.id} className="flex items-center gap-2">
+          <div key={s.id} className={`flex items-center gap-2 ${isTempId(s.id) ? 'opacity-60' : ''}`}>
             <span className="text-fnf-muted text-xs w-10 shrink-0">Set {i + 1}</span>
             <input
               type="number"
@@ -130,8 +135,8 @@ export function ExerciseCard({
           placeholder="reps"
           className="w-14 bg-fnf-bg/50 border border-purple-500/15 rounded-lg px-2 py-2 text-sm text-fnf-text text-center"
         />
-        <Button onClick={handleAddSet} className="!py-2 flex items-center gap-1">
-          <Plus size={14} /> Add Set
+        <Button onClick={handleAddSet} disabled={saving} className="!py-2 flex items-center gap-1">
+          <Plus size={14} /> {saving ? 'Saving…' : 'Add Set'}
         </Button>
       </div>
 

@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart, Bar, XAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import dynamic from 'next/dynamic';
+import { ChartSkeleton } from '@/components/charts/chart-skeleton';
 import {
   getActiveSession,
   getPersonalRecords,
@@ -11,14 +12,19 @@ import {
   getWorkoutHistory,
   getFoodEntriesForDate,
   getWaterEntriesForDate,
-  getGoals,
   sumNutrition,
 } from '@fit-n-fatal/db';
-import { Card, Button, Badge, ProgressRing, ProgressBar } from '@/components/ui';
-import { formatDate, formatWater, toLocalDateStr } from '@fit-n-fatal/utils';
+import { Card, Button, Badge, ProgressRing } from '@/components/ui';
+import { formatDate, formatWater, toLocalDateStr, addDaysLocal } from '@fit-n-fatal/utils';
 import { useProfile } from '@/lib/use-profile';
 
 const todayStr = () => toLocalDateStr();
+
+// Charts library (~100 KB) loads after the page is already showing.
+const WeeklyBarChart = dynamic(() => import('@/components/charts/weekly-bar-chart'), {
+  ssr: false,
+  loading: () => <ChartSkeleton height={140} />,
+});
 
 export default function DashboardPage() {
   const { userId, profile } = useProfile();
@@ -31,8 +37,9 @@ export default function DashboardPage() {
   });
 
   const { data: history } = useQuery({
-    queryKey: ['history', userId],
-    queryFn: () => getWorkoutHistory(userId!),
+    // Only the last 7 days are shown here — don't download all history.
+    queryKey: ['history', userId, 'since', addDaysLocal(today, -6)],
+    queryFn: () => getWorkoutHistory(userId!, { fromDate: addDaysLocal(today, -6) }),
     enabled: !!userId,
   });
 
@@ -57,12 +64,6 @@ export default function DashboardPage() {
   const { data: waterEntries } = useQuery({
     queryKey: ['waterEntries', userId, today],
     queryFn: () => getWaterEntriesForDate(userId!, today),
-    enabled: !!userId,
-  });
-
-  const { data: goals } = useQuery({
-    queryKey: ['goals', userId],
-    queryFn: () => getGoals(userId!),
     enabled: !!userId,
   });
 
@@ -95,7 +96,6 @@ export default function DashboardPage() {
     return days;
   }, [history]);
 
-  const activeGoals = (goals ?? []).filter((g) => g.status === 'active').slice(0, 3);
   const topPRs = (prs ?? []).slice(0, 3);
 
   const firstName = profile?.display_name?.split(' ')[0] ?? 'there';
@@ -213,13 +213,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <Card className="lg:col-span-2">
           <p className="text-fnf-muted text-xs uppercase tracking-wider mb-3">Weekly Activity</p>
-          <ResponsiveContainer width="100%" height={140}>
-            <BarChart data={weeklyChart}>
-              <XAxis dataKey="day" stroke="#6B5A8A" fontSize={11} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: 'rgb(var(--fnf-surface))', border: '1px solid rgba(180,100,255,0.2)' }} />
-              <Bar dataKey="sets" fill="#8B2BFF" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <WeeklyBarChart data={weeklyChart} />
         </Card>
 
         <Card>
@@ -239,29 +233,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <Card>
-        <div className="flex justify-between items-center mb-3">
-          <p className="text-fnf-muted text-xs uppercase tracking-wider">Goals</p>
-          <Link href="/dashboard/goals" className="text-fnf-violet text-xs hover:underline">Manage</Link>
-        </div>
-        {activeGoals.length === 0 ? (
-          <p className="text-fnf-muted text-sm">No active goals. <Link href="/dashboard/goals" className="text-fnf-violet hover:underline">Set one</Link></p>
-        ) : (
-          <div className="space-y-3">
-            {activeGoals.map((g) => (
-              <div key={g.id}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-fnf-text">{g.title}</span>
-                  <span className="text-fnf-muted text-xs">
-                    {g.current_value}/{g.target_value} {g.unit}
-                  </span>
-                </div>
-                <ProgressBar value={g.current_value} max={g.target_value} />
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
     </div>
   );
 }

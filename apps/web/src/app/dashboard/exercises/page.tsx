@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Star, Pencil, Trash2 } from 'lucide-react';
 import {
-  getExercises,
   getFavoriteExerciseIds,
   toggleFavoriteExercise,
   createCustomExercise,
@@ -15,6 +14,7 @@ import {
 import type { Exercise, ExerciseType } from '@fit-n-fatal/db';
 import { Card, Button, Input, Badge, Select, Textarea, Modal, ConfirmDialog, EmptyState } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
+import { useExerciseSearch, useIncrementalList } from '@/lib/hooks';
 import { MUSCLE_GROUPS, EQUIPMENT_OPTIONS, EXERCISE_TYPE_LABELS } from '@fit-n-fatal/utils';
 
 const emptyForm = {
@@ -44,10 +44,8 @@ function ExercisesInner() {
     if (q) setSearch(q);
   }, [searchParams]);
 
-  const { data: exercises } = useQuery({
-    queryKey: ['exercises', search, muscleFilter],
-    queryFn: () => getExercises(search, muscleFilter || undefined),
-  });
+  // Whole library cached once; search + filter run locally (debounced).
+  const { results: exercises, isLoading: libraryLoading } = useExerciseSearch(search, muscleFilter || undefined);
 
   const { data: favorites } = useQuery({
     queryKey: ['favoriteExercises', userId],
@@ -57,7 +55,19 @@ function ExercisesInner() {
 
   const favoriteMutation = useMutation({
     mutationFn: ({ id, fav }: { id: string; fav: boolean }) => toggleFavoriteExercise(userId!, id, fav),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favoriteExercises'] }),
+    // Star flips instantly; rolls back if the save fails.
+    onMutate: async ({ id, fav }) => {
+      const key = ['favoriteExercises', userId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const prev = queryClient.getQueryData<Set<string>>(key);
+      const next = new Set(prev ?? []);
+      if (fav) next.add(id);
+      else next.delete(id);
+      queryClient.setQueryData(key, next);
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => queryClient.setQueryData(['favoriteExercises', userId], ctx?.prev),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['favoriteExercises'] }),
   });
 
   const createMutation = useMutation({
@@ -96,7 +106,12 @@ function ExercisesInner() {
     setShowForm(ex);
   };
 
-  const filtered = (exercises ?? []).filter((ex) => !favoritesOnly || favorites?.has(ex.id));
+  const filtered = useMemo(
+    () => (favoritesOnly ? exercises.filter((ex) => favorites?.has(ex.id)) : exercises),
+    [exercises, favoritesOnly, favorites]
+  );
+  // ~500 cards is a lot for a phone to draw at once: render 40, add more on scroll.
+  const { visible, hasMore, sentinelRef } = useIncrementalList(filtered, 40);
 
   return (
     <div>
@@ -116,10 +131,11 @@ function ExercisesInner() {
         </button>
       </div>
 
-      {filtered.length === 0 && <EmptyState icon="🏋️" title="No exercises found" message="Try a different search or add a custom exercise." />}
+      {libraryLoading && <p className="text-fnf-muted text-sm">Loading exercises…</p>}
+      {!libraryLoading && filtered.length === 0 && <EmptyState icon="🏋️" title="No exercises found" message="Try a different search or add a custom exercise." />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filtered.map((ex) => {
+        {visible.map((ex) => {
           const isFav = favorites?.has(ex.id) ?? false;
           return (
             <Card key={ex.id}>
@@ -156,6 +172,7 @@ function ExercisesInner() {
           );
         })}
       </div>
+      {hasMore && <div ref={sentinelRef} className="h-10" aria-hidden />}
 
       <Modal open={!!showForm} onClose={() => setShowForm(null)} title={showForm === 'create' ? 'Add Exercise' : 'Edit Exercise'}>
         <div className="space-y-3">

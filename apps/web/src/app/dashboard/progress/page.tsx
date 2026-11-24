@@ -6,13 +6,13 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import {
   getPersonalRecords,
   getStrengthCurve,
-  getExercises,
   getBodyMeasurements,
   upsertBodyMeasurement,
 } from '@fit-n-fatal/db';
 import { Card, Button, Input } from '@/components/ui';
 import { getDateRangeStart, type DateRange, toLocalDateStr } from '@fit-n-fatal/utils';
 import { useProfile } from '@/lib/use-profile';
+import { useExerciseLibrary } from '@/lib/hooks';
 
 const RANGES: DateRange[] = ['week', 'month', 'quarter', 'year'];
 const METRICS = [
@@ -41,7 +41,7 @@ export default function ProgressPage() {
   const fromDate = getDateRangeStart(range)?.toISOString();
 
   const { data: prs } = useQuery({ queryKey: ['prs', userId], queryFn: () => getPersonalRecords(userId!), enabled: !!userId });
-  const { data: exercises } = useQuery({ queryKey: ['exercises'], queryFn: () => getExercises() });
+  const { data: exercises } = useExerciseLibrary();
   const { data: curve } = useQuery({
     queryKey: ['strengthCurve', userId, selectedExercise, range],
     queryFn: () => getStrengthCurve(userId!, selectedExercise!, fromDate ?? undefined),

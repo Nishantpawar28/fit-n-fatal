@@ -18,3 +18,4 @@ web-build/
 *.tsbuildinfo
 .vercel
 .env*
+.test-dist/

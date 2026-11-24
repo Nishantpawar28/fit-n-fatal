@@ -83,7 +83,7 @@ export function OnboardingForm({ userId, defaultName }: { userId: string; defaul
         <h1 className="font-heading text-2xl md:text-3xl font-bold text-fnf-text mb-1">
           Welcome to Fit N <span className="text-fnf-violet">Fatal</span>
         </h1>
-        <p className="text-fnf-muted text-sm mb-6">Set up your fitness profile — this powers your dashboard, goals, and daily targets.</p>
+        <p className="text-fnf-muted text-sm mb-6">Set up your fitness profile — this powers your dashboard and daily targets.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Card>

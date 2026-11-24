@@ -19,7 +19,12 @@ export default function AnalyticsPage() {
   const fromDateStr = toLocalDateStr(fromDate);
   const toDateStr = toLocalDateStr();
 
-  const { data: history } = useQuery({ queryKey: ['history', userId], queryFn: () => getWorkoutHistory(userId!), enabled: !!userId });
+  // Only workouts inside the selected range (at most a year), not all history.
+  const { data: history } = useQuery({
+    queryKey: ['history', userId, 'since', fromDateStr],
+    queryFn: () => getWorkoutHistory(userId!, { fromDate: fromDateStr }),
+    enabled: !!userId,
+  });
   const { data: stats } = useQuery({ queryKey: ['workoutStats', userId], queryFn: () => getWorkoutStats(userId!), enabled: !!userId });
   const { data: nutritionTrend } = useQuery({
     queryKey: ['nutritionTrend', userId, fromDateStr],
@@ -32,12 +37,22 @@ export default function AnalyticsPage() {
     enabled: !!userId,
   });
 
-  const inRange = (history ?? []).filter((h) => h.workout_date >= fromDateStr);
+  const inRange = useMemo(() => (history ?? []).filter((h) => h.workout_date >= fromDateStr), [history, fromDateStr]);
 
-  const totalSets = inRange.reduce((s, h) => s + h.workout_exercises.reduce((x, we) => x + we.sets.length, 0), 0);
-  const totalReps = inRange.reduce((s, h) => s + h.workout_exercises.reduce((x, we) => x + we.sets.reduce((r, set) => r + set.reps, 0), 0), 0);
-  const totalVolume = inRange.reduce((s, h) => s + h.workout_exercises.reduce((x, we) => x + we.sets.reduce((v, set) => v + set.weight * set.reps, 0), 0), 0);
-  const totalDuration = inRange.reduce((s, h) => s + (h.duration_minutes ?? 0), 0);
+  const { totalSets, totalReps, totalVolume, totalDuration } = useMemo(() => {
+    let totalSets = 0, totalReps = 0, totalVolume = 0, totalDuration = 0;
+    for (const h of inRange) {
+      totalDuration += h.duration_minutes ?? 0;
+      for (const we of h.workout_exercises) {
+        totalSets += we.sets.length;
+        for (const set of we.sets) {
+          totalReps += set.reps;
+          totalVolume += set.weight * set.reps;
+        }
+      }
+    }
+    return { totalSets, totalReps, totalVolume, totalDuration };
+  }, [inRange]);
 
   const muscleDistribution = useMemo(() => {
     const map = new Map<string, number>();

@@ -197,24 +197,6 @@ export interface BodyMeasurement {
   created_at: string;
 }
 
-export type GoalType = 'weight' | 'lift' | 'distance' | 'workout_count' | 'water' | 'protein' | 'custom';
-export type GoalStatus = 'active' | 'completed' | 'abandoned';
-
-export interface Goal {
-  id: string;
-  user_id: string;
-  type: GoalType;
-  title: string;
-  target_value: number;
-  current_value: number;
-  unit: string;
-  exercise_id: string | null;
-  deadline: string | null;
-  status: GoalStatus;
-  created_at: string;
-  completed_at: string | null;
-}
-
 export interface DailyNutritionTotals {
   calories: number;
   protein: number;

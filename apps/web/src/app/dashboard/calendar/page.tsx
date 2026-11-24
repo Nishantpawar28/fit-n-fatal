@@ -30,7 +30,12 @@ export default function CalendarPage() {
     enabled: !!userId,
   });
 
-  const { data: history } = useQuery({ queryKey: ['history', userId], queryFn: () => getWorkoutHistory(userId!), enabled: !!userId });
+  // Only the selected day's workouts, fetched when you tap a day.
+  const { data: history } = useQuery({
+    queryKey: ['history', userId, 'day', selected],
+    queryFn: () => getWorkoutHistory(userId!, { fromDate: selected!, toDate: selected! }),
+    enabled: !!userId && !!selected,
+  });
   const { data: measurements } = useQuery({ queryKey: ['measurements', userId], queryFn: () => getBodyMeasurements(userId!), enabled: !!userId && !!selected });
   const { data: dayFood } = useQuery({ queryKey: ['foodEntries', userId, selected], queryFn: () => getFoodEntriesForDate(userId!, selected!), enabled: !!userId && !!selected });
   const { data: dayWater } = useQuery({ queryKey: ['waterEntries', userId, selected], queryFn: () => getWaterEntriesForDate(userId!, selected!), enabled: !!userId && !!selected });

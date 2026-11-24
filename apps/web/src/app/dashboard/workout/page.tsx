@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -13,18 +13,24 @@ import {
   updateSet,
   deleteSet,
   copyLastWorkoutSets,
-  getExercises,
   getTemplates,
   startWorkoutFromTemplate,
   repeatLastWorkout,
   getPersonalRecords,
 } from '@fit-n-fatal/db';
+import type { Exercise, WorkoutSessionWithDetails, WorkoutSet } from '@fit-n-fatal/db';
 import { Card, Button, Input, Badge, Select, Modal } from '@/components/ui';
+import { useExerciseSearch, isTempId } from '@/lib/hooks';
 import { useProfile } from '@/lib/use-profile';
 import { WORKOUT_TYPE_LABELS, WORKOUT_TYPES, detectNewPR, toLocalDateStr } from '@fit-n-fatal/utils';
 import { ExerciseCard } from '@/components/workout/exercise-card';
 import { RestTimer } from '@/components/rest-timer';
 import { useToast } from '@/components/toast-provider';
+
+type SessionWE = WorkoutSessionWithDetails['workout_exercises'][number];
+
+let tempCounter = 0;
+const tempId = () => `temp-${Date.now()}-${tempCounter++}`;
 
 export default function WorkoutPage() {
   const queryClient = useQueryClient();
@@ -46,11 +52,8 @@ export default function WorkoutPage() {
     enabled: !!userId,
   });
 
-  const { data: exercises } = useQuery({
-    queryKey: ['exercises', search],
-    queryFn: () => getExercises(search),
-    enabled: !!session,
-  });
+  // Exercise picker searches the cached library locally (debounced).
+  const { results: exercises } = useExerciseSearch(search);
 
   const { data: templates } = useQuery({
     queryKey: ['templates', userId],
@@ -58,29 +61,57 @@ export default function WorkoutPage() {
     enabled: !!userId && showTemplates,
   });
 
-  useQuery({
+  const { data: prs } = useQuery({
     queryKey: ['prs', userId],
-    queryFn: async () => {
-      const prs = await getPersonalRecords(userId!);
-      setPrBaselines((prev) => {
-        const next = { ...prev };
-        for (const pr of prs) {
-          if (!next[pr.exercise_id]) {
-            next[pr.exercise_id] = {
-              max_weight: pr.max_weight,
-              estimated_1rm: pr.estimated_1rm,
-              best_reps_at_weight: pr.best_reps_at_weight,
-            };
-          }
-        }
-        return next;
-      });
-      return prs;
-    },
+    queryFn: () => getPersonalRecords(userId!),
     enabled: !!userId,
+    staleTime: 5 * 60_000,
   });
 
+  // Seed PR baselines from the (possibly cached) PR list.
+  useEffect(() => {
+    if (!prs) return;
+    setPrBaselines((prev) => {
+      const next = { ...prev };
+      for (const pr of prs) {
+        if (!next[pr.exercise_id]) {
+          next[pr.exercise_id] = {
+            max_weight: pr.max_weight,
+            estimated_1rm: pr.estimated_1rm,
+            best_reps_at_weight: pr.best_reps_at_weight,
+          };
+        }
+      }
+      return next;
+    });
+  }, [prs]);
+
+  const sessionKey = ['activeSession', userId];
   const invalidateSession = () => queryClient.invalidateQueries({ queryKey: ['activeSession'] });
+
+  // ---- Optimistic cache helpers: the screen updates immediately and the
+  // save happens in the background. If a save fails we reload the truth. ----
+  const patchSession = (fn: (s: WorkoutSessionWithDetails) => WorkoutSessionWithDetails) =>
+    queryClient.setQueryData<WorkoutSessionWithDetails | null>(sessionKey, (old) => (old ? fn(old) : old));
+  const patchWE = (weId: string, fn: (we: SessionWE) => SessionWE) =>
+    patchSession((s) => ({ ...s, workout_exercises: s.workout_exercises.map((we) => (we.id === weId ? fn(we) : we)) }));
+  const patchSet = (setId: string, fn: (set: WorkoutSet) => WorkoutSet | null) =>
+    patchSession((s) => ({
+      ...s,
+      workout_exercises: s.workout_exercises.map((we) => ({
+        ...we,
+        sets: we.sets.flatMap((set) => {
+          if (set.id !== setId) return [set];
+          const out = fn(set);
+          return out ? [out] : [];
+        }),
+      })),
+    }));
+  const onSaveError = (err: Error) => {
+    showToast({ icon: '⚠️', title: 'Could not save', message: err.message || 'Check your connection and try again.' });
+    invalidateSession();
+  };
+  const beforeOptimistic = () => queryClient.cancelQueries({ queryKey: sessionKey });
 
   const startMutation = useMutation({
     mutationFn: () =>
@@ -124,46 +155,98 @@ export default function WorkoutPage() {
       queryClient.invalidateQueries({ queryKey: ['history'] });
       queryClient.invalidateQueries({ queryKey: ['prs'] });
       queryClient.invalidateQueries({ queryKey: ['workoutStats'] });
+      queryClient.invalidateQueries({ queryKey: ['lastUsed'] });
+      queryClient.invalidateQueries({ queryKey: ['loggedExercises'] });
     },
   });
 
   const addExerciseMutation = useMutation({
-    mutationFn: (exerciseId: string) => addExerciseToSession(session!.id, exerciseId, session!.workout_exercises.length),
-    onSuccess: invalidateSession,
+    mutationFn: ({ exercise, orderIndex }: { exercise: Exercise; orderIndex: number; tempWeId: string }) =>
+      addExerciseToSession(session!.id, exercise.id, orderIndex),
+    onMutate: async ({ exercise, orderIndex, tempWeId }) => {
+      await beforeOptimistic();
+      patchSession((s) => ({
+        ...s,
+        workout_exercises: [
+          ...s.workout_exercises,
+          { id: tempWeId, session_id: s.id, exercise_id: exercise.id, order_index: orderIndex, created_at: new Date().toISOString(), exercise, sets: [] },
+        ],
+      }));
+    },
+    onSuccess: (row: any, { tempWeId }) =>
+      patchWE(tempWeId, (we) => ({ ...we, ...row, exercise: row.exercise ?? we.exercise, sets: we.sets })),
+    onError: onSaveError,
   });
 
   const removeExerciseMutation = useMutation({
     mutationFn: (weId: string) => removeExerciseFromSession(weId),
-    onSuccess: invalidateSession,
+    onMutate: async (weId) => {
+      await beforeOptimistic();
+      patchSession((s) => ({ ...s, workout_exercises: s.workout_exercises.filter((we) => we.id !== weId) }));
+    },
+    onError: onSaveError,
   });
 
   const logSetMutation = useMutation({
-    mutationFn: ({ weId, setNumber, reps, weight }: { weId: string; setNumber: number; reps: number; weight: number }) =>
+    mutationFn: ({ weId, setNumber, reps, weight }: { weId: string; setNumber: number; reps: number; weight: number; tempSetId: string }) =>
       logSet(weId, setNumber, { reps, weight, completed: true }),
-    onSuccess: (_data, vars) => {
-      invalidateSession();
+    onMutate: async ({ weId, setNumber, reps, weight, tempSetId }) => {
+      await beforeOptimistic();
+      const optimisticSet: WorkoutSet = {
+        id: tempSetId,
+        workout_exercise_id: weId,
+        set_number: setNumber,
+        reps,
+        weight,
+        rpe: null,
+        rest_seconds: null,
+        notes: null,
+        is_warmup: false,
+        completed: true,
+        created_at: new Date().toISOString(),
+      };
+      patchWE(weId, (we) => ({ ...we, sets: [...we.sets, optimisticSet] }));
     },
+    // Swap the temporary row for the saved one: no refetch needed.
+    onSuccess: (saved, { tempSetId }) => patchSet(tempSetId, () => saved),
+    onError: onSaveError,
   });
 
   const updateSetMutation = useMutation({
-    mutationFn: ({ setId, patch }: { setId: string; patch: any }) => updateSet(setId, patch),
-    onSuccess: invalidateSession,
+    mutationFn: ({ setId, patch }: { setId: string; patch: { reps?: number; weight?: number; completed?: boolean } }) =>
+      updateSet(setId, patch),
+    onMutate: async ({ setId, patch }) => {
+      await beforeOptimistic();
+      patchSet(setId, (set) => ({ ...set, ...patch }));
+    },
+    onError: onSaveError,
   });
 
   const deleteSetMutation = useMutation({
     mutationFn: (setId: string) => deleteSet(setId),
-    onSuccess: invalidateSession,
+    onMutate: async (setId) => {
+      await beforeOptimistic();
+      patchSet(setId, () => null);
+    },
+    onError: onSaveError,
   });
 
   const copyLastMutation = useMutation({
-    mutationFn: (we: any) => copyLastWorkoutSets(userId!, session!.id, we.exercise_id, we.id),
-    onSuccess: invalidateSession,
+    mutationFn: (we: SessionWE) => copyLastWorkoutSets(userId!, session!.id, we.exercise_id, we.id),
+    onSuccess: (inserted, we) =>
+      patchWE(we.id, (cur) => ({
+        ...cur,
+        sets: [...cur.sets, ...(inserted as WorkoutSet[])].sort((a, b) => a.set_number - b.set_number),
+      })),
+    onError: onSaveError,
   });
 
   const handleLogSet = (weId: string, reps: number, weight: number) => {
     const we = session!.workout_exercises.find((w) => w.id === weId)!;
-    const check = detectNewPR(we.exercise.name, prBaselines[we.exercise_id], weight, reps);
-    logSetMutation.mutate({ weId, setNumber: we.sets.length + 1, reps, weight });
+    if (isTempId(weId)) return; // exercise itself is still saving (a split second)
+    logSetMutation.mutate({ weId, setNumber: we.sets.length + 1, reps, weight, tempSetId: tempId() });
+    // Only judge PRs once your PR history has loaded, so it can't misfire.
+    const check = prs ? detectNewPR(we.exercise.name, prBaselines[we.exercise_id], weight, reps) : { isPR: false, message: '' };
     if (check.isPR) {
       showToast({ icon: '🔥', title: 'New Personal Record!', message: check.message, variant: 'celebrate' });
       setPrBaselines((prev) => {
@@ -278,10 +361,10 @@ export default function WorkoutPage() {
               we={we}
               userId={userId!}
               onLogSet={handleLogSet}
-              onUpdateSet={(setId, patch) => updateSetMutation.mutate({ setId, patch })}
-              onDeleteSet={(setId) => deleteSetMutation.mutate(setId)}
-              onRemoveExercise={(weId) => removeExerciseMutation.mutate(weId)}
-              onCopyLastWorkout={(we) => copyLastMutation.mutate(we)}
+              onUpdateSet={(setId, patch) => { if (!isTempId(setId)) updateSetMutation.mutate({ setId, patch }); }}
+              onDeleteSet={(setId) => { if (!isTempId(setId)) deleteSetMutation.mutate(setId); }}
+              onRemoveExercise={(weId) => { if (!isTempId(weId)) removeExerciseMutation.mutate(weId); }}
+              onCopyLastWorkout={(we) => { if (!isTempId(we.id)) copyLastMutation.mutate(we); }}
             />
           ))}
           <Button onClick={() => endMutation.mutate()} disabled={endMutation.isPending} variant="secondary" className="w-full">
@@ -293,10 +376,12 @@ export default function WorkoutPage() {
           <p className="font-medium text-fnf-text mb-3">Add Exercise</p>
           <Input value={search} onChange={setSearch} placeholder="Search..." className="mb-3" />
           <div className="max-h-96 overflow-y-auto space-y-1">
-            {(exercises ?? []).map((ex) => (
+            {exercises.slice(0, 60).map((ex) => (
               <button
                 key={ex.id}
-                onClick={() => addExerciseMutation.mutate(ex.id)}
+                onClick={() =>
+                  addExerciseMutation.mutate({ exercise: ex, orderIndex: session.workout_exercises.length, tempWeId: tempId() })
+                }
                 className="w-full text-left p-2 rounded-lg hover:bg-purple-500/10 text-sm text-fnf-secondary flex justify-between"
               >
                 <span>{ex.name}</span>

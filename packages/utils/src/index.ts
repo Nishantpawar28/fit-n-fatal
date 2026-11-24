@@ -6,3 +6,5 @@ export * from './labels';
 export * from './achievements';
 export * from './pr';
 export * from './nutrition';
+export * from './workout-stats';
+export * from './search';

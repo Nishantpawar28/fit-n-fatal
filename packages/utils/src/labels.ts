@@ -57,16 +57,6 @@ export const ACTIVITY_LEVEL_LABELS: Record<string, string> = {
   very_active: 'Very Active (athlete / physical job)',
 };
 
-export const GOAL_TYPE_LABELS: Record<string, string> = {
-  weight: 'Body Weight',
-  lift: 'Lift a Weight',
-  distance: 'Distance',
-  workout_count: 'Workout Count',
-  water: 'Daily Water',
-  protein: 'Daily Protein',
-  custom: 'Custom',
-};
-
 export const GENDER_LABELS: Record<string, string> = {
   male: 'Male',
   female: 'Female',

@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { getExercises, getFoods, getTemplates, getWorkoutHistory } from '@fit-n-fatal/db';
+import { getFoods, getTemplates, searchWorkoutsByName } from '@fit-n-fatal/db';
+import { filterExercises } from '@fit-n-fatal/utils';
+import { useDebouncedValue, useExerciseLibrary } from '@/lib/hooks';
 import { useCurrentUserId } from '@/lib/use-current-user';
 
 export function GlobalSearch() {
@@ -22,36 +24,34 @@ export function GlobalSearch() {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const active = query.trim().length > 1;
+  // Wait until typing pauses before searching (was: 4 requests per keystroke).
+  const q = useDebouncedValue(query.trim(), 300);
+  const active = q.length > 1;
 
-  const { data: exercises } = useQuery({
-    queryKey: ['search-exercises', query],
-    queryFn: () => getExercises(query),
-    enabled: active,
-  });
+  const { data: library } = useExerciseLibrary();
+  const exercises = useMemo(() => (active ? filterExercises(library ?? [], q).slice(0, 5) : []), [library, q, active]);
 
   const { data: foods } = useQuery({
-    queryKey: ['search-foods', userId, query],
-    queryFn: () => getFoods(userId!, query),
+    queryKey: ['search-foods', userId, q],
+    queryFn: () => getFoods(userId!, q),
     enabled: active && !!userId,
   });
 
   const { data: templates } = useQuery({
-    queryKey: ['search-templates', userId],
+    queryKey: ['templates', userId],
     queryFn: () => getTemplates(userId!),
     enabled: active && !!userId,
   });
 
+  // Name search runs in the database and returns at most 5 rows.
   const { data: workouts } = useQuery({
-    queryKey: ['search-workouts', userId],
-    queryFn: () => getWorkoutHistory(userId!),
+    queryKey: ['search-workouts', userId, q],
+    queryFn: () => searchWorkoutsByName(userId!, q, 5),
     enabled: active && !!userId,
   });
 
-  const matchedTemplates = (templates ?? []).filter((t) => t.name.toLowerCase().includes(query.toLowerCase())).slice(0, 5);
-  const matchedWorkouts = (workouts ?? [])
-    .filter((w) => (w.name ?? '').toLowerCase().includes(query.toLowerCase()))
-    .slice(0, 5);
+  const matchedTemplates = (templates ?? []).filter((t) => t.name.toLowerCase().includes(q.toLowerCase())).slice(0, 5);
+  const matchedWorkouts = workouts ?? [];
 
   const goTo = (path: string) => {
     router.push(path);
@@ -83,9 +83,9 @@ export function GlobalSearch() {
         )}
       </div>
 
-      {open && active && (
+      {open && query.trim().length > 1 && (
         <div className="fnf-animate-in absolute mt-2 w-full max-h-96 overflow-y-auto bg-fnf-surface border border-purple-500/15 rounded-xl shadow-xl z-50 p-2">
-          {!hasResults && <p className="text-fnf-muted text-xs p-3">No matches for &ldquo;{query}&rdquo;</p>}
+          {!hasResults && <p className="text-fnf-muted text-xs p-3">{q !== query.trim() ? 'Searching…' : <>No matches for &ldquo;{query}&rdquo;</>}</p>}
 
           {(exercises?.length ?? 0) > 0 && (
             <div className="mb-2">

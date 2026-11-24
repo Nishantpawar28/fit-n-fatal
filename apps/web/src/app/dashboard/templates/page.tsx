@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getTemplates, createTemplate, deleteTemplate, startWorkoutFromTemplate, getExercises } from '@fit-n-fatal/db';
+import { getTemplates, createTemplate, deleteTemplate, startWorkoutFromTemplate } from '@fit-n-fatal/db';
 import { Card, Button, Input, Select, ConfirmDialog, EmptyState } from '@/components/ui';
 import { useProfile } from '@/lib/use-profile';
+import { useExerciseSearch } from '@/lib/hooks';
 import { WORKOUT_TYPE_LABELS, WORKOUT_TYPES } from '@fit-n-fatal/utils';
 import { Trash2, Plus, X } from 'lucide-react';
 
@@ -27,11 +28,7 @@ export default function TemplatesPage() {
     enabled: !!userId,
   });
 
-  const { data: exercises } = useQuery({
-    queryKey: ['exercises', search],
-    queryFn: () => getExercises(search),
-    enabled: showCreate,
-  });
+  const { results: exercises } = useExerciseSearch(search);
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -95,6 +92,7 @@ export default function TemplatesPage() {
             <div className="max-h-48 overflow-y-auto mt-2 space-y-1">
               {(exercises ?? [])
                 .filter((ex) => !picked.some((p) => p.id === ex.id))
+                .slice(0, 60)
                 .map((ex) => (
                   <button
                     key={ex.id}

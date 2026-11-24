@@ -12,7 +12,8 @@
     "mobile:tunnel": "npm run start --workspace=@fit-n-fatal/mobile -- --tunnel",
     "web": "npm run dev --workspace=@fit-n-fatal/web",
     "build:web": "npm run build --workspace=@fit-n-fatal/web",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   },
   "engines": {
     "node": ">=18"
